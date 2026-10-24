@@ -192,16 +192,26 @@ fun SiteSheet(sites: List<Site>, current: Site?, onSelect: (Site) -> Unit) {
         )
         val supported = sites.filter { it.isSupported }
         val unsupported = sites.filter { !it.isSupported }
+        // 按来源接口分组（聚合模式）
+        val sourceOf = com.juying.tv.data.source.SourceManager.siteSourceName
+        val grouped = supported.groupBy { sourceOf[it.key] ?: "默认接口" }
         Column(
             Modifier
                 .fillMaxWidth()
                 .heightIn(max = 440.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
-            Text("可用站点 · ${supported.size}", color = AppColors.textSecondary, fontSize = 12.sp)
-            Spacer(Modifier.height(4.dp))
-            supported.forEach { s ->
-                SiteRow(s, current?.key == s.key) { onSelect(s) }
+            grouped.forEach { (sourceName, list) ->
+                Text(
+                    "$sourceName · ${list.size} 站点",
+                    color = AppColors.accent,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
+                )
+                list.forEach { s ->
+                    SiteRow(s, current?.key == s.key) { onSelect(s) }
+                }
             }
             if (unsupported.isNotEmpty()) {
                 Text(

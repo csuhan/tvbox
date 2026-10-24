@@ -9,6 +9,7 @@ import com.juying.tv.data.local.HistoryEntity
 import com.juying.tv.data.model.*
 import com.juying.tv.data.source.ConfigState
 import com.juying.tv.data.source.SourceEntry
+import com.juying.tv.data.source.SourceHealth
 import com.juying.tv.data.source.SourceManager
 import com.juying.tv.data.source.VodRepository
 import kotlinx.coroutines.Job
@@ -22,12 +23,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val currentSite: StateFlow<Site?> = SourceManager.currentSite
     val sources: StateFlow<List<SourceEntry>> = SourceManager.sources
     val configUrl: StateFlow<String> = SourceManager.configUrl
+    val health: StateFlow<Map<String, SourceHealth>> = SourceManager.health
+    val scanning: StateFlow<Boolean> = SourceManager.scanning
 
     private val _homeReset = MutableStateFlow(0)
     val homeReset: StateFlow<Int> = _homeReset
 
     init {
-        viewModelScope.launch { SourceManager.restore() }
+        viewModelScope.launch {
+            SourceManager.restore()
+            // 启动后自动扫描并聚合所有已保存接口
+            SourceManager.scanAndAggregate()
+            _homeReset.value += 1
+        }
+    }
+
+    /** 重新扫描全部接口并重新聚合 */
+    fun rescan() {
+        viewModelScope.launch {
+            SourceManager.scanAndAggregate()
+            _homeReset.value += 1
+        }
     }
 
     fun loadConfig(url: String) {
@@ -42,8 +58,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _homeReset.value += 1
     }
 
-    fun addSource(name: String, url: String) = viewModelScope.launch { SourceManager.addSource(name, url) }
-    fun removeSource(url: String) = viewModelScope.launch { SourceManager.removeSource(url) }
+    fun addSource(name: String, url: String) = viewModelScope.launch {
+        SourceManager.addSource(name, url)
+        SourceManager.scanAndAggregate()
+        _homeReset.value += 1
+    }
+
+    fun removeSource(url: String) = viewModelScope.launch {
+        SourceManager.removeSource(url)
+        SourceManager.scanAndAggregate()
+        _homeReset.value += 1
+    }
 }
 
 /** 首页：分类 + 列表 */

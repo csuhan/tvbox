@@ -12,6 +12,7 @@ import com.juying.tv.data.model.ConfigBean
 import com.juying.tv.data.model.Site
 import com.juying.tv.data.remote.Http
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -24,6 +25,15 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 private val Context.dataStore by preferencesDataStore(name = "tvbox")
 
 data class SourceEntry(val name: String, val url: String)
+
+/** 接口健康状态 */
+data class SourceHealth(
+    val url: String,
+    val checking: Boolean = false,
+    val ok: Boolean = false,
+    val siteCount: Int = 0,
+    val message: String = "",
+)
 
 sealed interface ConfigState {
     data object Idle : ConfigState
@@ -67,6 +77,15 @@ object SourceManager {
 
     private val _configUrl = MutableStateFlow(DEFAULT_URL)
     val configUrl: StateFlow<String> = _configUrl
+
+    private val _health = MutableStateFlow<Map<String, SourceHealth>>(emptyMap())
+    val health: StateFlow<Map<String, SourceHealth>> = _health
+
+    private val _scanning = MutableStateFlow(false)
+    val scanning: StateFlow<Boolean> = _scanning
+
+    /** 聚合后：站点 key -> 来源接口名（用于换源弹窗分组） */
+    val siteSourceName = mutableMapOf<String, String>()
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -228,5 +247,98 @@ object SourceManager {
                 if (l.url.startsWith("http", true)) l else l.copy(url = resolve(l.url))
             },
         )
+    }
+
+    // ---------------- 扫描与聚合 ----------------
+
+    private data class CheckResult(
+        val url: String,
+        val name: String,
+        val ok: Boolean,
+        val siteCount: Int,
+        val message: String,
+        val config: ConfigBean?,
+        val effectiveUrl: String = url,
+    )
+
+    /** 逐个扫描已保存接口并聚合健康源，替代手动切换 */
+    suspend fun scanAndAggregate() = withContext(Dispatchers.IO) {
+        if (_scanning.value) return@withContext
+        _scanning.value = true
+        try {
+            val nameOf = mutableMapOf<String, String>()
+            _sources.value.forEach { nameOf[it.url] = it.name }
+            val urls = (_sources.value.map { it.url } + _configUrl.value).distinct()
+            _health.value = urls.associateWith {
+                SourceHealth(it, checking = true, message = "检测中…")
+            }
+            val results = urls.map { u ->
+                async {
+                    try {
+                        checkSource(u, nameOf[u] ?: u.toHttpUrlOrNull()?.host ?: "当前接口")
+                    } catch (e: Exception) {
+                        CheckResult(u, nameOf[u] ?: u, false, 0, e.message ?: "检测失败", null)
+                    }
+                }
+            }.map { it.await() }
+            _health.value = results.associate {
+                it.url to SourceHealth(it.url, checking = false, ok = it.ok, siteCount = it.siteCount, message = it.message)
+            }
+            // 同一有效地址（如 127.0.0.1 与 10.0.2.2 指向同一服务）去重
+            val healthy = results
+                .filter { it.ok && it.config != null }
+                .distinctBy { it.effectiveUrl }
+            if (healthy.isNotEmpty()) {
+                val merged = mergeConfigs(healthy)
+                _configState.value = ConfigState.Success(merged, "聚合 ${healthy.size} 个接口")
+                val savedSite = appContext.dataStore.data.first()[KEY_SITE_KEY]
+                val keep = merged.sites.firstOrNull { it.key == savedSite }
+                _currentSite.value = keep
+                    ?: merged.sites.firstOrNull { it.isSupported }
+                    ?: merged.sites.firstOrNull()
+            } else {
+                _configState.value = ConfigState.Error("没有可用的接口，请检查网络或更换接口", _configUrl.value)
+            }
+        } finally {
+            _scanning.value = false
+        }
+    }
+
+    private suspend fun checkSource(url: String, name: String): CheckResult {
+        return kotlinx.coroutines.withTimeoutOrNull(25_000) {
+            var effective = url
+            try {
+                val raw = try {
+                    Http.getString(effective)
+                } catch (e: Exception) {
+                    val alt = localhostAlt(effective)
+                    if (alt != null) { effective = alt; Http.getString(alt) } else throw e
+                }
+                val cfg = resolveRelative(parseConfigOrSiteApi(decodeConfig(raw), effective), effective)
+                val supported = cfg.sites.count { it.isSupported }
+                when {
+                    cfg.sites.isEmpty() -> CheckResult(url, name, false, 0, "配置中没有站点", null)
+                    supported == 0 -> CheckResult(url, name, false, 0, "全部为爬虫源，无可用站点", null)
+                    else -> CheckResult(url, name, true, supported, "正常", cfg, effective)
+                }
+            } catch (e: Exception) {
+                CheckResult(url, name, false, 0, e.message ?: "连接失败", null)
+            }
+        } ?: CheckResult(url, name, false, 0, "检测超时", null)
+    }
+
+    /** 聚合多个健康配置：站点 key 加来源命名空间，直播/解析按 url 去重 */
+    private fun mergeConfigs(inputs: List<CheckResult>): ConfigBean {
+        siteSourceName.clear()
+        val sites = inputs.flatMap { input ->
+            input.config!!.sites.map { s ->
+                val ns = "${input.url.hashCode()}::${s.key}"
+                siteSourceName[ns] = input.name
+                s.copy(key = ns)
+            }
+        }
+        val lives = inputs.flatMap { it.config!!.lives }.distinctBy { it.url }
+        val parses = inputs.flatMap { it.config!!.parses }.distinctBy { it.url }
+        return ConfigBean(sites = sites, lives = lives, parses = parses)
     }
 }

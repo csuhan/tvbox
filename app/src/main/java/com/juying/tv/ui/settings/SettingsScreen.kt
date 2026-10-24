@@ -42,6 +42,8 @@ fun SettingsScreen(nav: NavHostController, mainVm: MainViewModel = viewModel()) 
     var showAdd by remember { mutableStateOf(false) }
     var showSiteSheet by remember { mutableStateOf(false) }
     val currentSite by mainVm.currentSite.collectAsState()
+    val health by mainVm.health.collectAsState()
+    val scanning by mainVm.scanning.collectAsState()
 
     Column(
         Modifier
@@ -64,8 +66,8 @@ fun SettingsScreen(nav: NavHostController, mainVm: MainViewModel = viewModel()) 
             Text("设置", color = AppColors.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Medium)
         }
 
-        // 当前接口
-        SectionHeader("当前接口")
+        // 聚合状态
+        SectionHeader("接口聚合")
         Card(
             colors = CardDefaults.cardColors(containerColor = AppColors.card),
             shape = RoundedCornerShape(12.dp),
@@ -73,14 +75,24 @@ fun SettingsScreen(nav: NavHostController, mainVm: MainViewModel = viewModel()) 
         ) {
             ListItem(
                 headlineContent = {
-                    Text(configUrl, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        when (val s = configState) {
+                            is ConfigState.Success -> s.sourceUrl
+                            is ConfigState.Error -> "聚合失败"
+                            else -> "准备中…"
+                        },
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
                 },
                 supportingContent = {
-                    val status = when (val s = configState) {
-                        is ConfigState.Loading -> "加载中…"
-                        is ConfigState.Success -> "✓ ${s.config.sites.size} 个站点 · ${s.config.lives.size} 个直播源 · ${s.config.parses.size} 个解析"
-                        is ConfigState.Error -> "加载失败：${s.message}"
-                        else -> ""
+                    val status = when {
+                        scanning -> "正在逐个扫描接口…"
+                        else -> when (val s = configState) {
+                            is ConfigState.Success -> "✓ ${s.config.sites.count { it.isSupported }} 个可用站点 · ${s.config.lives.size} 个直播源 · ${s.config.parses.size} 个解析"
+                            is ConfigState.Error -> s.message
+                            else -> ""
+                        }
                     }
                     Text(
                         status,
@@ -90,8 +102,12 @@ fun SettingsScreen(nav: NavHostController, mainVm: MainViewModel = viewModel()) 
                 },
                 leadingContent = { Icon(Icons.Outlined.Link, null, tint = AppColors.accent) },
                 trailingContent = {
-                    IconButton(onClick = { mainVm.loadConfig(configUrl) }) {
-                        Icon(Icons.Outlined.Refresh, "重新加载", tint = AppColors.textSecondary)
+                    if (scanning) {
+                        CircularProgressIndicator(color = AppColors.accent, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                    } else {
+                        IconButton(onClick = { mainVm.rescan() }) {
+                            Icon(Icons.Outlined.Refresh, "重新扫描", tint = AppColors.textSecondary)
+                        }
                     }
                 },
                 colors = ListItemDefaults.colors(containerColor = AppColors.card),
@@ -140,8 +156,7 @@ fun SettingsScreen(nav: NavHostController, mainVm: MainViewModel = viewModel()) 
             }
             mySources.forEachIndexed { i, src ->
                 if (i > 0) HorizontalDivider(color = AppColors.divider, thickness = 0.5.dp, modifier = Modifier.padding(start = 56.dp))
-                SourceRow(src, active = src.url == configUrl,
-                    onUse = { mainVm.loadConfig(src.url) },
+                SourceRow(src, health = health[src.url],
                     onDelete = { mainVm.removeSource(src.url) })
             }
         }
@@ -176,7 +191,7 @@ fun SettingsScreen(nav: NavHostController, mainVm: MainViewModel = viewModel()) 
                         }
                     },
                     colors = ListItemDefaults.colors(containerColor = AppColors.card),
-                    modifier = Modifier.clickable { mainVm.loadConfig(src.url) },
+                    modifier = Modifier.clickable { mainVm.addSource(src.name, src.url) },
                 )
             }
         }
@@ -242,10 +257,9 @@ fun SettingsScreen(nav: NavHostController, mainVm: MainViewModel = viewModel()) 
                 TextButton(onClick = {
                     if (url.isNotBlank()) {
                         mainVm.addSource(name, url.trim())
-                        mainVm.loadConfig(url.trim())
                         showAdd = false
                     }
-                }) { Text("添加并使用", color = AppColors.accent) }
+                }) { Text("添加", color = AppColors.accent) }
             },
             dismissButton = {
                 TextButton(onClick = { showAdd = false }) { Text("取消", color = AppColors.textSecondary) }
@@ -255,21 +269,36 @@ fun SettingsScreen(nav: NavHostController, mainVm: MainViewModel = viewModel()) 
 }
 
 @Composable
-private fun SourceRow(src: SourceEntry, active: Boolean, onUse: () -> Unit, onDelete: () -> Unit) {
+private fun SourceRow(
+    src: SourceEntry,
+    health: com.juying.tv.data.source.SourceHealth?,
+    onDelete: () -> Unit,
+) {
     ListItem(
-        headlineContent = {
-            Text(
-                src.name,
-                fontSize = 14.sp,
-                color = if (active) AppColors.accent else AppColors.textPrimary,
-                fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-            )
-        },
+        headlineContent = { Text(src.name, fontSize = 14.sp) },
         supportingContent = {
-            Text(src.url, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Column {
+                Text(src.url, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (health != null) {
+                    Text(
+                        when {
+                            health.checking -> "检测中…"
+                            health.ok -> "✓ 可用 · ${health.siteCount} 个站点"
+                            else -> "✗ 不可用 · ${health.message}"
+                        },
+                        fontSize = 11.sp,
+                        color = when {
+                            health.checking -> AppColors.textSecondary
+                            health.ok -> androidx.compose.ui.graphics.Color(0xFF3E9C87)
+                            else -> androidx.compose.ui.graphics.Color(0xFFD9534F)
+                        },
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
         },
         leadingContent = {
-            if (active) Icon(Icons.Outlined.CheckCircle, "使用中", tint = AppColors.accent)
+            if (health?.ok == true) Icon(Icons.Outlined.CheckCircle, "可用", tint = AppColors.accent)
             else Icon(Icons.Outlined.Link, null, tint = AppColors.textSecondary)
         },
         trailingContent = {
@@ -278,6 +307,5 @@ private fun SourceRow(src: SourceEntry, active: Boolean, onUse: () -> Unit, onDe
             }
         },
         colors = ListItemDefaults.colors(containerColor = AppColors.card),
-        modifier = Modifier.clickable(onClick = onUse),
     )
 }
