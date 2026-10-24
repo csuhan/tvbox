@@ -115,7 +115,11 @@ fun SearchScreen(nav: NavHostController, mainVm: MainViewModel = viewModel()) {
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    items(state.results, key = { it.vodId + it.vodName }) { item ->
+                    items(
+                        count = state.results.size,
+                        key = { i -> "${state.results[i].vodId}_$i" },
+                    ) { i ->
+                        val item = state.results[i]
                         VodCard(item, onClick = { nav.navigate("detail/${item.vodId}") })
                     }
                 }

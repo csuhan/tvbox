@@ -104,13 +104,16 @@ class WebSniffer(private val context: Context) {
     private fun found(mediaUrl: String, pageUrl: String, callback: Callback) {
         if (done) return
         done = true
-        release()
         val headers = mutableMapOf("User-Agent" to Http.UA)
         try {
             val origin = android.net.Uri.parse(pageUrl)
             headers["Referer"] = "${origin.scheme}://${origin.host}/"
         } catch (_: Exception) { }
-        callback.onFound(mediaUrl, headers)
+        // shouldInterceptRequest 在后台线程回调，WebView 方法必须切回主线程
+        handler.post {
+            release()
+            callback.onFound(mediaUrl, headers)
+        }
     }
 
     fun release() {

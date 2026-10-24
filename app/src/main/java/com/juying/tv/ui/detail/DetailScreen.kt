@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
@@ -49,6 +50,10 @@ fun DetailScreen(nav: NavHostController, vodId: String, mainVm: MainViewModel = 
     val context = LocalContext.current
 
     LaunchedEffect(site?.key, vodId) { vm.load(site, vodId) }
+    LifecycleResumeEffect(Unit) {
+        vm.refreshHistory()
+        onPauseOrDispose { }
+    }
 
     fun play(sourceIndex: Int, episodeIndex: Int, startPos: Long = 0L) {
         val d = state.detail ?: return

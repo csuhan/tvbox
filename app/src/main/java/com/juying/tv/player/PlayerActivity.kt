@@ -64,6 +64,7 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_START_POSITION = "start_pos"
         const val EXTRA_LIVE = "live"
         const val EXTRA_LIVE_URL = "live_url"
+        const val EXTRA_LIVE_URLS = "live_urls"
     }
 
     private var player: ExoPlayer? = null
@@ -99,6 +100,9 @@ class PlayerActivity : ComponentActivity() {
     private var epUrls: List<String> = emptyList()
     private var currentEp = 0
     private var isLive = false
+    private var liveUrls: List<String> = emptyList()
+    private var liveUrlIndex = 0
+    private var bufferingSince = 0L
     private var siteKey = ""
     private var vodId = ""
     private var pic = ""
@@ -130,7 +134,11 @@ class PlayerActivity : ComponentActivity() {
 
         initPlayer()
         if (isLive) {
-            playUrl(intent.getStringExtra(EXTRA_LIVE_URL) ?: "", 0L)
+            liveUrls = intent.getStringArrayListExtra(EXTRA_LIVE_URLS)
+                ?: arrayListOf(intent.getStringExtra(EXTRA_LIVE_URL) ?: "")
+            liveUrls = liveUrls.filter { it.isNotBlank() }
+            liveUrlIndex = 0
+            playUrl(liveUrls.firstOrNull() ?: "", 0L)
         } else {
             playEpisode(currentEp, startPos)
         }
@@ -139,7 +147,7 @@ class PlayerActivity : ComponentActivity() {
             JyTheme { PlayerScreen() }
         }
 
-        // 进度轮询 + 历史保存
+        // 进度轮询 + 历史保存 + 直播缓冲看门狗
         lifecycleScope.launch {
             while (true) {
                 delay(1000)
@@ -148,12 +156,28 @@ class PlayerActivity : ComponentActivity() {
                     uiState.value = uiState.value.copy(position = p.currentPosition, duration = p.duration)
                     saveHistory(p.currentPosition, p.duration)
                 }
+                // 直播缓冲超过 15 秒：换下一条线路，没有则报错
+                if (isLive && bufferingSince > 0 &&
+                    System.currentTimeMillis() - bufferingSince > 15000
+                ) {
+                    bufferingSince = 0L
+                    if (liveUrlIndex + 1 < liveUrls.size) {
+                        liveUrlIndex++
+                        playDirect(liveUrls[liveUrlIndex], 0L, emptyMap())
+                    } else {
+                        p.stop()
+                        uiState.value = uiState.value.copy(
+                            buffering = false,
+                            error = "该频道信号不佳或已失效\n请返回选择其他频道",
+                        )
+                    }
+                }
             }
         }
     }
 
     private fun initPlayer() {
-        val factory = OkHttpDataSource.Factory(Http.client).setUserAgent(Http.UA)
+        val factory = OkHttpDataSource.Factory(Http.mediaClient).setUserAgent(Http.UA)
         dsFactory = factory
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(factory))
@@ -164,6 +188,11 @@ class PlayerActivity : ComponentActivity() {
                         uiState.value = uiState.value.copy(playing = isPlaying)
                     }
                     override fun onPlaybackStateChanged(state: Int) {
+                        if (state == Player.STATE_BUFFERING) {
+                            bufferingSince = System.currentTimeMillis()
+                        } else {
+                            bufferingSince = 0L
+                        }
                         uiState.value = uiState.value.copy(
                             buffering = state == Player.STATE_BUFFERING,
                             error = if (state == Player.STATE_IDLE) uiState.value.error else null,
@@ -171,7 +200,13 @@ class PlayerActivity : ComponentActivity() {
                         if (state == Player.STATE_ENDED && !isLive) nextEpisode()
                     }
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                        val cur = if (isLive) intent.getStringExtra(EXTRA_LIVE_URL) else epUrls.getOrNull(currentEp)
+                        // 直播：自动尝试下一条线路
+                        if (isLive && liveUrlIndex + 1 < liveUrls.size) {
+                            liveUrlIndex++
+                            playDirect(liveUrls[liveUrlIndex], 0L, emptyMap())
+                            return
+                        }
+                        val cur = if (isLive) liveUrls.getOrNull(liveUrlIndex) else epUrls.getOrNull(currentEp)
                         // 直连失败且未嗅探过 → 自动嗅探一次
                         if (!isLive && cur != null && sniffTriedFor != cur) {
                             sniffTriedFor = cur
@@ -264,6 +299,7 @@ class PlayerActivity : ComponentActivity() {
         lastSave = now
         val db = AppDatabase.get(this)
         lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
             db.history().upsert(
                 HistoryEntity(
                     siteKey = siteKey, vodId = vodId,
@@ -273,6 +309,7 @@ class PlayerActivity : ComponentActivity() {
                     position = position, duration = duration,
                 )
             )
+            }
         }
     }
 

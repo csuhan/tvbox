@@ -98,6 +98,10 @@ fun LiveScreen(nav: NavHostController, mainVm: MainViewModel) {
                                             putExtra(PlayerActivity.EXTRA_LIVE, true)
                                             putExtra(PlayerActivity.EXTRA_TITLE, ch.name)
                                             putExtra(PlayerActivity.EXTRA_LIVE_URL, ch.urls.first())
+                                            putStringArrayListExtra(
+                                                PlayerActivity.EXTRA_LIVE_URLS,
+                                                ArrayList(ch.urls),
+                                            )
                                         }
                                     )
                                 }

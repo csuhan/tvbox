@@ -121,7 +121,11 @@ fun HomeScreen(nav: NavHostController, mainVm: MainViewModel) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         ClassTabs(state.classes, state.selectedType) { vm.selectClass(it) }
                     }
-                    items(state.items, key = { it.vodId + it.vodName }) { item ->
+                    items(
+                        count = state.items.size,
+                        key = { i -> "${state.items[i].vodId}_$i" },
+                    ) { i ->
+                        val item = state.items[i]
                         VodCard(item, onClick = { nav.navigate("detail/${item.vodId}") })
                     }
                     if (state.loadingMore) {

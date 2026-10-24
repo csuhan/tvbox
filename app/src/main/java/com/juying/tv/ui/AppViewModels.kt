@@ -12,6 +12,7 @@ import com.juying.tv.data.source.SourceEntry
 import com.juying.tv.data.source.SourceManager
 import com.juying.tv.data.source.VodRepository
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -79,8 +80,16 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val sel = _state.value.selectedType
                 // 分类信息来自 ac=list；列表数据统一走 videolist（ac=list 的条目通常无封面图）
-                val classPage = try { VodRepository.home(s) } catch (e: Exception) { null }
-                val page = if (sel == null) VodRepository.latest(s, 1) else VodRepository.category(s, sel, 1)
+                // 两个请求并行，慢源等待时间减半。
+                // 注意：子协程必须用 runCatching 吞掉异常，否则子任务失败会取消父 Job 并导致崩溃
+                val classDeferred = async { runCatching { VodRepository.home(s) }.getOrNull() }
+                val pageDeferred = async {
+                    runCatching {
+                        if (sel == null) VodRepository.latest(s, 1) else VodRepository.category(s, sel, 1)
+                    }
+                }
+                val classPage = classDeferred.await()
+                val page = pageDeferred.await().getOrThrow()
                 val classes = when {
                     classPage != null && classPage.classes.isNotEmpty() -> classPage.classes
                     page.classes.isNotEmpty() -> page.classes
@@ -124,7 +133,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update {
                     it.copy(
                         loadingMore = false,
-                        items = it.items + page.list,
+                        items = (it.items + page.list).distinctBy { v -> v.vodId },
                         page = page.page,
                         pageCount = if (page.pageCount <= 0) it.pageCount else page.pageCount,
                     )
@@ -158,7 +167,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             _state.value = UiState(loading = true, searched = true)
             try {
                 val page = VodRepository.search(site, keyword.trim())
-                _state.value = UiState(results = page.list, searched = true)
+                _state.value = UiState(results = page.list.distinctBy { it.vodId }, searched = true)
             } catch (e: Exception) {
                 _state.value = UiState(error = e.message ?: "搜索失败", searched = true)
             }
@@ -187,18 +196,23 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
     private val _isFavorite = MutableStateFlow(false)
     val isFavorite: StateFlow<Boolean> = _isFavorite
 
+    private var favJob: Job? = null
+
     fun load(site: Site?, vodId: String) {
         if (site == null) return
         if (this.vodId == vodId && _state.value.detail != null) return
         this.vodId = vodId
         this.siteKey = site.key
         _state.value = UiState()
-        viewModelScope.launch {
-            launch {
-                db.history().get(site.key, vodId)?.let { h -> _state.update { it.copy(history = h) } }
-            }
-            launch {
+        favJob?.cancel()
+        favJob = viewModelScope.launch {
+            runCatching {
                 db.favorite().isFavorite(site.key, vodId).collect { _isFavorite.value = it }
+            }
+        }
+        viewModelScope.launch {
+            runCatching {
+                db.history().get(site.key, vodId)?.let { h -> _state.update { it.copy(history = h) } }
             }
             try {
                 val d = VodRepository.detail(site, vodId)
@@ -218,16 +232,30 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** 从播放器返回时刷新观看记录（驱动"续播"按钮） */
+    fun refreshHistory() {
+        if (siteKey.isBlank() || vodId.isBlank()) return
+        viewModelScope.launch {
+            runCatching {
+                db.history().get(siteKey, vodId)?.let { h ->
+                    _state.update { it.copy(history = h) }
+                }
+            }
+        }
+    }
+
     fun selectSource(index: Int) = _state.update { it.copy(sourceIndex = index) }
     fun toggleReverse() = _state.update { it.copy(reversed = !it.reversed) }
 
     fun toggleFavorite() {
         val d = _state.value.detail ?: return
         viewModelScope.launch {
-            if (_isFavorite.value) {
-                db.favorite().delete(siteKey, vodId)
-            } else {
-                db.favorite().upsert(FavoriteEntity(siteKey, vodId, d.vodName, d.vodPic, d.vodRemarks))
+            runCatching {
+                if (_isFavorite.value) {
+                    db.favorite().delete(siteKey, vodId)
+                } else {
+                    db.favorite().upsert(FavoriteEntity(siteKey, vodId, d.vodName, d.vodPic, d.vodRemarks))
+                }
             }
         }
     }
@@ -301,6 +329,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     val favorites: StateFlow<List<FavoriteEntity>> = db.favorite().all()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun clearHistory() = viewModelScope.launch { db.history().clear() }
-    fun removeHistory(siteKey: String, vodId: String) = viewModelScope.launch { db.history().delete(siteKey, vodId) }
+    fun clearHistory() = viewModelScope.launch { runCatching { db.history().clear() } }
+    fun removeHistory(siteKey: String, vodId: String) =
+        viewModelScope.launch { runCatching { db.history().delete(siteKey, vodId) } }
 }
