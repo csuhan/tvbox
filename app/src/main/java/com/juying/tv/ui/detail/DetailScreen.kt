@@ -139,7 +139,9 @@ fun DetailScreen(nav: NavHostController, vodId: String, mainVm: MainViewModel = 
                     // 操作按钮
                     Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         val resume = state.history
+                        val noPlay = d.sources.isEmpty()
                         Button(
+                            enabled = !noPlay,
                             onClick = {
                                 val h = state.history
                                 if (h != null) play(h.sourceIndex, h.episodeIndex, h.position)
@@ -191,6 +193,24 @@ fun DetailScreen(nav: NavHostController, vodId: String, mainVm: MainViewModel = 
                                 maxLines = if (expanded) Int.MAX_VALUE else 3,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.clickable { expanded = !expanded },
+                            )
+                        }
+                    }
+
+                    if (d.sources.isEmpty()) {
+                        Box(
+                            Modifier
+                                .padding(horizontal = 16.dp)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(AppColors.accentSoft)
+                                .padding(12.dp),
+                        ) {
+                            Text(
+                                "该源未提供播放地址（vod_play_url 为空），可能是源服务端做了地址脱敏，或需要其他取址方式",
+                                color = AppColors.accent,
+                                fontSize = 12.sp,
+                                lineHeight = 18.sp,
                             )
                         }
                     }

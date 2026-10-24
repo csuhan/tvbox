@@ -91,22 +91,69 @@ object SourceManager {
     /** 加载并解析接口配置 */
     suspend fun loadConfig(url: String) = withContext(Dispatchers.IO) {
         _configState.value = ConfigState.Loading
+        var effectiveUrl = url
         try {
-            val raw = Http.getString(url)
-            val json = decodeConfig(raw)
-            val cfg = gson.fromJson(json, ConfigBean::class.java)
-                ?: throw IllegalArgumentException("配置为空")
-            val resolved = resolveRelative(cfg, url)
-            appContext.dataStore.edit {
-                it[KEY_CONFIG_URL] = url
-                it[KEY_CACHE_CONFIG] = gson.toJson(resolved)
-                it[KEY_CACHE_URL] = url
+            val raw = try {
+                Http.getString(effectiveUrl)
+            } catch (e: Exception) {
+                // 127.0.0.1/localhost 在模拟器中指向模拟器自身，回退到宿主机别名 10.0.2.2
+                val alt = localhostAlt(effectiveUrl)
+                if (alt != null) {
+                    effectiveUrl = alt
+                    Http.getString(alt)
+                } else throw e
             }
-            _configUrl.value = url
+            val json = decodeConfig(raw)
+            val cfg = parseConfigOrSiteApi(json, effectiveUrl)
+            val resolved = resolveRelative(cfg, effectiveUrl)
+            appContext.dataStore.edit {
+                it[KEY_CONFIG_URL] = effectiveUrl
+                it[KEY_CACHE_CONFIG] = gson.toJson(resolved)
+                it[KEY_CACHE_URL] = effectiveUrl
+            }
+            _configUrl.value = effectiveUrl
             val savedSite = appContext.dataStore.data.first()[KEY_SITE_KEY]
-            applyConfig(resolved, url, savedSite)
+            applyConfig(resolved, effectiveUrl, savedSite)
         } catch (e: Exception) {
-            _configState.value = ConfigState.Error(e.message ?: "加载失败", url)
+            _configState.value = ConfigState.Error(e.message ?: "加载失败", effectiveUrl)
+        }
+    }
+
+    /** 若是 localhost/127.0.0.1 则返回 10.0.2.2 版本，否则 null */
+    private fun localhostAlt(url: String): String? {
+        val host = url.toHttpUrlOrNull()?.host ?: return null
+        return if (host == "127.0.0.1" || host.equals("localhost", true)) {
+            url.replaceFirst(host, "10.0.2.2")
+        } else null
+    }
+
+    /**
+     * 解析配置：标准 TVBox 配置(含 sites)直接用；
+     * 若返回的是苹果CMS站点API响应(含 list)，自动包装成单站点配置
+     */
+    private fun parseConfigOrSiteApi(json: String, url: String): ConfigBean {
+        val obj = try {
+            JsonParser.parseString(json).asJsonObject
+        } catch (e: Exception) {
+            throw IllegalArgumentException("无法识别的配置格式")
+        }
+        return when {
+            obj.has("sites") -> gson.fromJson(json, ConfigBean::class.java)
+                ?: throw IllegalArgumentException("配置为空")
+            obj.has("list") -> {
+                val host = url.toHttpUrlOrNull()?.host ?: "本地"
+                ConfigBean(
+                    sites = listOf(
+                        Site(
+                            key = "siteapi_$url",
+                            name = "本地源·$host",
+                            type = 1,
+                            api = url,
+                        )
+                    )
+                )
+            }
+            else -> throw IllegalArgumentException("既不是 TVBox 配置也不是站点 API")
         }
     }
 
