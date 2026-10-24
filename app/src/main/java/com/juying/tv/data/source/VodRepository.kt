@@ -27,6 +27,10 @@ object VodRepository {
         requireSupported(site).category(typeId, page)
     }
 
+    suspend fun latest(site: Site, page: Int): VodPage = withContext(Dispatchers.IO) {
+        requireSupported(site).latest(page)
+    }
+
     suspend fun search(site: Site, keyword: String, page: Int = 1): VodPage = withContext(Dispatchers.IO) {
         requireSupported(site).search(keyword, page)
     }

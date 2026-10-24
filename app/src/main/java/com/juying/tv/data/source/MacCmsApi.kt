@@ -37,6 +37,10 @@ class MacCmsApi(private val site: Site) {
     fun category(typeId: String, page: Int): VodPage =
         fetch(url("videolist", mapOf("t" to typeId, "pg" to page.toString())))
 
+    /** 最新列表（不带分类，通常带封面图，可翻页） */
+    fun latest(page: Int): VodPage =
+        fetch(url("videolist", mapOf("pg" to page.toString())))
+
     /** 搜索 */
     fun search(keyword: String, page: Int = 1): VodPage =
         fetch(url("videolist", mapOf("wd" to keyword, "pg" to page.toString())))

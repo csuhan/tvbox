@@ -35,12 +35,29 @@ fun VodCard(item: VodItem, onClick: () -> Unit, modifier: Modifier = Modifier) {
                 .clip(RoundedCornerShape(12.dp))
                 .background(CardDark)
         ) {
-            AsyncImage(
-                model = item.vodPic,
-                contentDescription = item.vodName,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+            if (item.vodPic.isBlank()) {
+                // 无封面占位：渐变底 + 片名首字
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Brush.linearGradient(listOf(CardDark, PrimarySoft))),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        item.vodName.take(2),
+                        color = Primary,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            } else {
+                AsyncImage(
+                    model = item.vodPic,
+                    contentDescription = item.vodName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             // 底部渐变 + 备注
             if (item.vodRemarks.isNotBlank()) {
                 Box(

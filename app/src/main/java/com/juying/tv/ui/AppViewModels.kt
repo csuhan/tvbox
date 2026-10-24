@@ -78,8 +78,14 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(loading = true, error = null) }
             try {
                 val sel = _state.value.selectedType
-                val page = if (sel == null) VodRepository.home(s) else VodRepository.category(s, sel, 1)
-                val classes = if (page.classes.isNotEmpty()) page.classes else _state.value.classes
+                // 分类信息来自 ac=list；列表数据统一走 videolist（ac=list 的条目通常无封面图）
+                val classPage = try { VodRepository.home(s) } catch (e: Exception) { null }
+                val page = if (sel == null) VodRepository.latest(s, 1) else VodRepository.category(s, sel, 1)
+                val classes = when {
+                    classPage != null && classPage.classes.isNotEmpty() -> classPage.classes
+                    page.classes.isNotEmpty() -> page.classes
+                    else -> _state.value.classes
+                }
                 // 首页没分类时，从列表推断
                 val finalClasses = classes.ifEmpty {
                     page.list.mapNotNull { it.typeName.takeIf { n -> n.isNotBlank() } }
@@ -109,11 +115,12 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         val s = site ?: return
         val st = _state.value
         if (st.loading || st.loadingMore || st.page >= st.pageCount) return
-        val tid = st.selectedType ?: return // 首页推荐不翻页
+        val tid = st.selectedType
         viewModelScope.launch {
             _state.update { it.copy(loadingMore = true) }
             try {
-                val page = VodRepository.category(s, tid, st.page + 1)
+                val page = if (tid == null) VodRepository.latest(s, st.page + 1)
+                           else VodRepository.category(s, tid, st.page + 1)
                 _state.update {
                     it.copy(
                         loadingMore = false,
