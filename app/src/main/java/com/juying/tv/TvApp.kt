@@ -16,7 +16,7 @@ class TvApp : Application(), ImageLoaderFactory {
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
             .callFactory { Call.Factory(Http.client::newCall) }
-            .crossfade(true)
+            .crossfade(false)
             .respectCacheHeaders(false)
             .build()
 }

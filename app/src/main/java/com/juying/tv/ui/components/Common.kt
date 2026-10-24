@@ -21,10 +21,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.SubcomposeAsyncImage
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.platform.LocalContext
 import com.juying.tv.data.model.VodItem
 import com.juying.tv.ui.theme.AppColors
-import com.valentinilk.shimmer.shimmer
 
 /** B站风海报卡片：圆角封面 + 右上角角标 + 双行标题 */
 @Composable
@@ -48,30 +50,20 @@ fun VodCard(item: VodItem, onClick: () -> Unit, modifier: Modifier = Modifier) {
                     )
                 }
             } else {
-                SubcomposeAsyncImage(
-                    model = item.vodPic,
+                // 性能优化：静态占位 + 按卡片尺寸解码 + 无 crossfade，滑动不掉帧
+                val placeholder = ColorPainter(AppColors.fill)
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(item.vodPic)
+                        .size(360, 500)
+                        .crossfade(false)
+                        .build(),
                     contentDescription = item.vodName,
                     contentScale = ContentScale.Crop,
+                    placeholder = placeholder,
+                    error = placeholder,
+                    fallback = placeholder,
                     modifier = Modifier.fillMaxSize(),
-                    loading = {
-                        // 微光占位（shimmer 库）
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .shimmer()
-                                .background(AppColors.fill)
-                        )
-                    },
-                    error = {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Outlined.PlayCircle,
-                                contentDescription = null,
-                                tint = AppColors.textSecondary.copy(alpha = 0.4f),
-                                modifier = Modifier.size(34.dp),
-                            )
-                        }
-                    },
                 )
             }
             // 右上角标（B站风）

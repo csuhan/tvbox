@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -14,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -79,66 +82,56 @@ fun HomeScreen(nav: NavHostController, mainVm: MainViewModel) {
                     )
                 }
             }
-            ClassTabs(state.classes, state.selectedType) { vm.selectClass(it) }
         }
         }
-        HorizontalDivider(color = AppColors.divider, thickness = 0.5.dp)
 
         when {
-            state.error != null && state.items.isEmpty() -> ErrorView(state.error!!) { vm.refresh() }
-            state.loading && state.items.isEmpty() -> LoadingView()
+            state.bootError != null -> ErrorView(state.bootError!!) { vm.bind(site) }
+            state.bootLoading -> LoadingView()
             else -> {
-                val gridState = rememberLazyGridState()
-                val shouldLoadMore by remember {
-                    derivedStateOf {
-                        val info = gridState.layoutInfo
-                        val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
-                        last >= info.totalItemsCount - 6
-                    }
-                }
-                LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) vm.loadMore() }
+                val pageCount = state.classes.size + 1
+                val pagerState = rememberPagerState(pageCount = { pageCount })
+                val scope = rememberCoroutineScope()
 
-                PullToRefreshBox(
-                    isRefreshing = state.loading,
-                    onRefresh = { vm.refresh() },
-                ) {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    state = gridState,
-                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    items(
-                        count = state.items.size,
-                        key = { i -> "${state.items[i].vodId}_$i" },
-                    ) { i ->
-                        val item = state.items[i]
-                        VodCard(item, onClick = { nav.navigate("detail/${item.vodId}") })
-                    }
-                    if (state.loadingMore) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            Box(Modifier.fillMaxWidth().padding(14.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(
-                                    color = AppColors.accent,
-                                    strokeWidth = 2.dp,
-                                    modifier = Modifier.size(22.dp),
-                                )
-                            }
-                        }
-                    }
+                // Pager 翻页 → 确保该分类已加载
+                LaunchedEffect(pagerState.currentPage, state.classes) {
+                    val tid = if (pagerState.currentPage == 0) ""
+                    else state.classes.getOrNull(pagerState.currentPage - 1)?.typeId ?: return@LaunchedEffect
+                    vm.ensureLoaded(tid)
                 }
+                // 换站点 → 回到第一页
+                LaunchedEffect(site?.key) {
+                    if (pagerState.currentPage != 0) pagerState.scrollToPage(0)
+                }
+
+                Column(Modifier.fillMaxSize()) {
+                    CategoryTabRow(
+                        classes = state.classes,
+                        selectedIndex = pagerState.currentPage,
+                        onSelect = { i -> scope.launch { pagerState.animateScrollToPage(i) } },
+                    )
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize(),
+                        beyondViewportPageCount = 1,
+                    ) { pageIndex ->
+                        val typeId = if (pageIndex == 0) "" else state.classes[pageIndex - 1].typeId
+                        CategoryPage(
+                            page = state.pages[typeId],
+                            onRefresh = { vm.refreshClass(typeId) },
+                            onLoadMore = { vm.loadMore(typeId) },
+                            onItemClick = { item -> nav.navigate("detail/${item.vodId}") },
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-/** 分类 Tab：material3 ScrollableTabRow（官方指示器动画） */
+/** 分类 Tab：material3 ScrollableTabRow，与 Pager 双向同步 */
 @Composable
-private fun ClassTabs(classes: List<VodClass>, selected: String?, onSelect: (String?) -> Unit) {
-    val selectedIndex = (classes.indexOfFirst { it.typeId == selected } + 1).coerceAtLeast(0)
+private fun CategoryTabRow(classes: List<VodClass>, selectedIndex: Int, onSelect: (Int) -> Unit) {
     ScrollableTabRow(
         selectedTabIndex = selectedIndex,
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
@@ -153,12 +146,12 @@ private fun ClassTabs(classes: List<VodClass>, selected: String?, onSelect: (Str
             }
         },
     ) {
-        Tab(selected = selected == null, onClick = { onSelect(null) }) {
-            TabText("推荐", selected == null)
+        Tab(selected = selectedIndex == 0, onClick = { onSelect(0) }) {
+            TabText("推荐", selectedIndex == 0)
         }
-        classes.forEach { c ->
-            Tab(selected = selected == c.typeId, onClick = { onSelect(c.typeId) }) {
-                TabText(c.typeName, selected == c.typeId)
+        classes.forEachIndexed { i, c ->
+            Tab(selected = selectedIndex == i + 1, onClick = { onSelect(i + 1) }) {
+                TabText(c.typeName, selectedIndex == i + 1)
             }
         }
     }
@@ -173,6 +166,61 @@ private fun TabText(text: String, selected: Boolean) {
         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
         modifier = Modifier.padding(vertical = 10.dp),
     )
+}
+
+/** 单个分类页：下拉刷新 + 网格 + 触底加载 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CategoryPage(
+    page: HomeViewModel.ClassPage?,
+    onRefresh: () -> Unit,
+    onLoadMore: () -> Unit,
+    onItemClick: (com.juying.tv.data.model.VodItem) -> Unit,
+) {
+    when {
+        page == null || (page.loading && page.items.isEmpty()) -> LoadingView()
+        page.error != null && page.items.isEmpty() -> ErrorView(page.error!!, onRefresh)
+        else -> {
+            val gridState = rememberLazyGridState()
+            val shouldLoadMore by remember {
+                derivedStateOf {
+                    val info = gridState.layoutInfo
+                    val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                    last >= info.totalItemsCount - 6
+                }
+            }
+            LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
+
+            PullToRefreshBox(isRefreshing = page.loading, onRefresh = onRefresh) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    state = gridState,
+                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    items(
+                        count = page.items.size,
+                        key = { i -> "${page.items[i].vodId}_$i" },
+                    ) { i ->
+                        VodCard(page.items[i], onClick = { onItemClick(page.items[i]) })
+                    }
+                    if (page.loadingMore) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Box(Modifier.fillMaxWidth().padding(14.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(
+                                    color = AppColors.accent,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

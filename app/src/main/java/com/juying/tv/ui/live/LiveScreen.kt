@@ -122,7 +122,11 @@ fun LiveScreen(nav: NavHostController, mainVm: MainViewModel) {
                 // 频道列表（material3 ListItem）
                 val channels = state.channels.filter { it.group == state.selectedGroup }
                 LazyColumn(Modifier.fillMaxSize()) {
-                    items(channels, key = { it.group + it.name }) { ch ->
+                    items(
+                        count = channels.size,
+                        key = { i -> "${channels[i].group}_${channels[i].name}_$i" },
+                    ) { i ->
+                        val ch = channels[i]
                         ListItem(
                             headlineContent = {
                                 Text(ch.name, maxLines = 1, overflow = TextOverflow.Ellipsis)

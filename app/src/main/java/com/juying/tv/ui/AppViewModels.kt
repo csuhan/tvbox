@@ -71,91 +71,112 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 }
 
-/** 首页：分类 + 列表 */
+/** 首页：分类 + 列表（每分类独立缓存，配合 HorizontalPager） */
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
-    data class UiState(
-        val loading: Boolean = true,
-        val error: String? = null,
-        val classes: List<VodClass> = emptyList(),
+    data class ClassPage(
         val items: List<VodItem> = emptyList(),
-        val page: Int = 1,
+        val page: Int = 0,
         val pageCount: Int = 1,
+        val loading: Boolean = false,
         val loadingMore: Boolean = false,
-        val selectedType: String? = null, // null = 首页推荐
+        val error: String? = null,
+    )
+
+    data class UiState(
+        val classes: List<VodClass> = emptyList(),
+        val pages: Map<String, ClassPage> = emptyMap(), // key="" 表示推荐
+        val bootLoading: Boolean = true,
+        val bootError: String? = null,
     )
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state
 
     private var site: Site? = null
-    private var loadJob: Job? = null
+    private val jobs = mutableMapOf<String, Job>()
 
     fun bind(site: Site?) {
         if (site == this.site && _state.value.classes.isNotEmpty()) return
         this.site = site
-        _state.value = UiState(loading = site != null)
-        if (site != null) refresh()
+        jobs.values.forEach { it.cancel() }
+        jobs.clear()
+        _state.value = UiState()
+        if (site != null) boot()
     }
 
-    fun refresh() {
+    /** 首次：分类 + 推荐页并行加载 */
+    private fun boot() {
         val s = site ?: return
-        loadJob?.cancel()
-        loadJob = viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
-            try {
-                val sel = _state.value.selectedType
-                // 分类信息来自 ac=list；列表数据统一走 videolist（ac=list 的条目通常无封面图）
-                // 两个请求并行，慢源等待时间减半。
-                // 注意：子协程必须用 runCatching 吞掉异常，否则子任务失败会取消父 Job 并导致崩溃
-                val classDeferred = async { runCatching { VodRepository.home(s) }.getOrNull() }
-                val pageDeferred = async {
-                    runCatching {
-                        if (sel == null) VodRepository.latest(s, 1) else VodRepository.category(s, sel, 1)
-                    }
-                }
-                val classPage = classDeferred.await()
-                val page = pageDeferred.await().getOrThrow()
+        viewModelScope.launch {
+            val classDeferred = async { runCatching { VodRepository.home(s) }.getOrNull() }
+            val pageDeferred = async { runCatching { VodRepository.latest(s, 1) } }
+            val classPage = classDeferred.await()
+            val pageResult = pageDeferred.await()
+            pageResult.onSuccess { page ->
                 val classes = when {
-                    classPage != null && classPage.classes.isNotEmpty() -> classPage.classes
+                    !classPage?.classes.isNullOrEmpty() -> classPage!!.classes
                     page.classes.isNotEmpty() -> page.classes
-                    else -> _state.value.classes
-                }
-                // 首页没分类时，从列表推断
-                val finalClasses = classes.ifEmpty {
-                    page.list.mapNotNull { it.typeName.takeIf { n -> n.isNotBlank() } }
+                    else -> page.list.mapNotNull { it.typeName.takeIf { n -> n.isNotBlank() } }
                         .distinct().mapIndexed { i, n -> VodClass((i + 1).toString(), n) }
                 }
                 _state.value = UiState(
-                    loading = false,
-                    classes = finalClasses,
-                    items = page.list,
-                    page = page.page,
-                    pageCount = if (page.pageCount <= 0) 1 else page.pageCount,
-                    selectedType = sel,
+                    classes = classes,
+                    pages = mapOf("" to ClassPage(
+                        items = page.list.distinctBy { it.vodId },
+                        page = page.page,
+                        pageCount = if (page.pageCount <= 0) 1 else page.pageCount,
+                    )),
+                    bootLoading = false,
                 )
-            } catch (e: Exception) {
-                _state.update { it.copy(loading = false, error = e.message ?: "加载失败") }
+            }.onFailure { e ->
+                _state.value = UiState(bootLoading = false, bootError = e.message ?: "加载失败")
             }
         }
     }
 
-    fun selectClass(typeId: String?) {
-        if (_state.value.selectedType == typeId) return
-        _state.update { it.copy(selectedType = typeId) }
-        refresh()
+    /** 确保某分类已加载（Pager 预取相邻页时调用） */
+    fun ensureLoaded(typeId: String) {
+        val p = _state.value.pages[typeId]
+        if (p != null && (p.items.isNotEmpty() || p.loading || p.error != null)) return
+        refreshClass(typeId)
     }
 
-    fun loadMore() {
+    fun refreshClass(typeId: String) {
         val s = site ?: return
-        val st = _state.value
-        if (st.loading || st.loadingMore || st.page >= st.pageCount) return
-        val tid = st.selectedType
+        jobs[typeId]?.cancel()
+        jobs[typeId] = viewModelScope.launch {
+            updatePage(typeId) { it.copy(loading = true, error = null) }
+            runCatching {
+                if (typeId.isEmpty()) VodRepository.latest(s, 1)
+                else VodRepository.category(s, typeId, 1)
+            }.onSuccess { page ->
+                if (page.classes.isNotEmpty() && _state.value.classes.isEmpty()) {
+                    _state.update { it.copy(classes = page.classes) }
+                }
+                updatePage(typeId) {
+                    ClassPage(
+                        items = page.list.distinctBy { it.vodId },
+                        page = page.page,
+                        pageCount = if (page.pageCount <= 0) 1 else page.pageCount,
+                    )
+                }
+            }.onFailure { e ->
+                updatePage(typeId) { it.copy(loading = false, error = e.message ?: "加载失败") }
+            }
+        }
+    }
+
+    fun loadMore(typeId: String) {
+        val s = site ?: return
+        val cur = _state.value.pages[typeId] ?: return
+        if (cur.loading || cur.loadingMore || cur.items.isEmpty() || cur.page >= cur.pageCount) return
         viewModelScope.launch {
-            _state.update { it.copy(loadingMore = true) }
-            try {
-                val page = if (tid == null) VodRepository.latest(s, st.page + 1)
-                           else VodRepository.category(s, tid, st.page + 1)
-                _state.update {
+            updatePage(typeId) { it.copy(loadingMore = true) }
+            runCatching {
+                if (typeId.isEmpty()) VodRepository.latest(s, cur.page + 1)
+                else VodRepository.category(s, typeId, cur.page + 1)
+            }.onSuccess { page ->
+                updatePage(typeId) {
                     it.copy(
                         loadingMore = false,
                         items = (it.items + page.list).distinctBy { v -> v.vodId },
@@ -163,9 +184,15 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                         pageCount = if (page.pageCount <= 0) it.pageCount else page.pageCount,
                     )
                 }
-            } catch (e: Exception) {
-                _state.update { it.copy(loadingMore = false) }
+            }.onFailure {
+                updatePage(typeId) { it.copy(loadingMore = false) }
             }
+        }
+    }
+
+    private fun updatePage(typeId: String, f: (ClassPage) -> ClassPage) {
+        _state.update { st ->
+            st.copy(pages = st.pages + (typeId to f(st.pages[typeId] ?: ClassPage())))
         }
     }
 }
@@ -321,7 +348,8 @@ class LiveViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null, sourceIndex = index) }
             try {
-                val channels = VodRepository.liveChannels(live)
+                // 直播列表常见同名频道，去重防止 LazyColumn key 冲突崩溃
+                val channels = VodRepository.liveChannels(live).distinctBy { it.group + it.name }
                 if (channels.isEmpty()) {
                     // 空源自动尝试下一个
                     val lives = _state.value.liveSources
