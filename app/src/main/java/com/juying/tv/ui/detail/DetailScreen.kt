@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -13,23 +14,37 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LifecycleResumeEffect
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
+import com.juying.tv.data.model.Episode
+import com.juying.tv.data.remote.Http
 import com.juying.tv.player.PlayerActivity
+import com.juying.tv.player.WebSniffer
 import com.juying.tv.ui.DetailViewModel
 import com.juying.tv.ui.MainViewModel
 import com.juying.tv.ui.components.ErrorView
@@ -37,6 +52,7 @@ import com.juying.tv.ui.components.LoadingView
 import com.juying.tv.ui.components.SectionHeader
 import com.juying.tv.ui.theme.AppColors
 
+/** 芒果风详情页：顶部内嵌播放器(进页即播) + 标签 + 操作行 + 数字选集 */
 @Composable
 fun DetailScreen(nav: NavHostController, vodId: String, mainVm: MainViewModel = viewModel()) {
     val vm: DetailViewModel = viewModel()
@@ -51,7 +67,7 @@ fun DetailScreen(nav: NavHostController, vodId: String, mainVm: MainViewModel = 
         onPauseOrDispose { }
     }
 
-    fun play(sourceIndex: Int, episodeIndex: Int, startPos: Long = 0L) {
+    fun playFullscreen(sourceIndex: Int, episodeIndex: Int, startPos: Long = 0L) {
         val d = state.detail ?: return
         val src = d.sources.getOrNull(sourceIndex) ?: return
         context.startActivity(
@@ -71,119 +87,170 @@ fun DetailScreen(nav: NavHostController, vodId: String, mainVm: MainViewModel = 
     }
 
     Column(Modifier.fillMaxSize().background(AppColors.card)) {
-        // 顶栏
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 4.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = { nav.popBackStack() }) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = AppColors.textPrimary)
-            }
-        }
-        HorizontalDivider(color = AppColors.divider, thickness = 0.5.dp)
-
         when {
-            state.loading -> LoadingView()
-            state.error != null -> ErrorView(state.error!!) { vm.load(site, vodId) }
+            state.loading -> {
+                DetailTopBar(nav)
+                LoadingView()
+            }
+            state.error != null -> {
+                DetailTopBar(nav)
+                ErrorView(state.error!!) { vm.load(site, vodId) }
+            }
             state.detail != null -> {
                 val d = state.detail!!
-                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                    // 信息区：小海报 + 文字
-                    Row(Modifier.padding(16.dp)) {
-                        AsyncImage(
-                            model = d.vodPic,
-                            contentDescription = d.vodName,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .width(104.dp)
-                                .height(148.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(AppColors.fill),
-                        )
-                        Column(Modifier.padding(start = 14.dp).weight(1f)) {
+                // 内嵌播放器状态
+                var playingIndex by remember { mutableStateOf(-1) } // -1 = 未在内嵌播放
+                var embeddedPosition by remember { mutableStateOf(0L) }
+                val resume = state.history
+
+                Column(Modifier.fillMaxSize()) {
+                    // ===== 内嵌播放区（16:9）=====
+                    EmbeddedPlayer(
+                        poster = d.vodPic,
+                        episodes = d.sources.getOrNull(state.sourceIndex)?.episodes ?: emptyList(),
+                        autoPlayIndex = if (resume != null && playingIndex < 0) resume.episodeIndex else 0,
+                        startPosition = resume?.position ?: 0L,
+                        playingIndex = playingIndex,
+                        onPlayingIndexChange = { playingIndex = it },
+                        onPositionChange = { embeddedPosition = it },
+                        onFullscreen = {
+                            val idx = if (playingIndex >= 0) playingIndex
+                            else resume?.episodeIndex ?: 0
+                            playFullscreen(state.sourceIndex, idx, embeddedPosition)
+                        },
+                        onBack = { nav.popBackStack() },
+                    )
+
+                    // ===== 信息区（可滚动）=====
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                        // 标题 + 标签
+                        Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                             Text(
                                 d.vodName,
                                 color = AppColors.textPrimary,
-                                fontSize = 19.sp,
+                                fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                lineHeight = 26.sp,
-                                maxLines = 2,
+                                maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            val meta = listOfNotNull(
+                            val tags = listOfNotNull(
                                 d.typeName.ifBlank { null },
                                 d.vodYear.ifBlank { null },
                                 d.vodArea.ifBlank { null },
-                            ).joinToString(" · ")
-                            if (meta.isNotBlank()) {
-                                Text(meta, color = AppColors.textSecondary, fontSize = 12.sp,
-                                    modifier = Modifier.padding(top = 8.dp))
-                            }
-                            if (d.vodRemarks.isNotBlank()) {
-                                Box(
-                                    Modifier
-                                        .padding(top = 8.dp)
-                                        .clip(RoundedCornerShape(5.dp))
-                                        .background(AppColors.accentSoft)
-                                        .padding(horizontal = 7.dp, vertical = 3.dp),
+                                d.vodRemarks.ifBlank { null },
+                            )
+                            if (tags.isNotEmpty()) {
+                                Row(
+                                    Modifier.padding(top = 6.dp).horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 ) {
-                                    Text(d.vodRemarks, color = AppColors.accent, fontSize = 11.sp)
+                                    tags.forEach { tag ->
+                                        Box(
+                                            Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(AppColors.fill)
+                                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                                        ) {
+                                            Text(tag, color = AppColors.textSecondary, fontSize = 11.sp)
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    // 操作按钮
-                    Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        val resume = state.history
-                        val noPlay = d.sources.isEmpty()
-                        Button(
-                            enabled = !noPlay,
-                            onClick = {
-                                val h = state.history
-                                if (h != null) play(h.sourceIndex, h.episodeIndex, h.position)
-                                else play(state.sourceIndex, 0)
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = AppColors.accent),
-                            shape = RoundedCornerShape(22.dp),
-                            modifier = Modifier.weight(1f).height(44.dp),
+                        // 操作行：分享 | 收藏 | 下载(占位→选集提示)
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
                         ) {
-                            Icon(Icons.Outlined.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
-                            Text(
-                                if (resume != null) "  续播 ${resume.episodeName}" else "  立即播放",
-                                fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                            )
-                        }
-                        OutlinedButton(
-                            onClick = { vm.toggleFavorite() },
-                            shape = RoundedCornerShape(22.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = if (isFav) AppColors.accent else AppColors.textSecondary
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                if (isFav) AppColors.accent else AppColors.divider,
-                            ),
-                            modifier = Modifier.height(44.dp),
-                        ) {
-                            Icon(
+                            ActionItem("分享", Icons.Outlined.Share) {
+                                val send = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, "《${d.vodName}》${d.vodContent.take(80)}")
+                                }
+                                context.startActivity(Intent.createChooser(send, "分享"))
+                            }
+                            ActionItem(
+                                if (isFav) "已收藏" else "收藏",
                                 if (isFav) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                                contentDescription = "收藏",
-                                modifier = Modifier.size(19.dp),
-                            )
-                            Text(if (isFav) " 已收藏" else " 收藏", fontSize = 13.sp)
+                                tint = if (isFav) AppColors.accent else AppColors.textPrimary,
+                            ) { vm.toggleFavorite() }
+                            ActionItem("简介", Icons.AutoMirrored.Outlined.Sort) { }
                         }
-                    }
+                        HorizontalDivider(color = AppColors.divider, thickness = 0.5.dp,
+                            modifier = Modifier.padding(vertical = 8.dp))
 
-                    // 信息
-                    Column(Modifier.padding(16.dp)) {
-                        if (d.vodDirector.isNotBlank()) InfoLine("导演", d.vodDirector)
-                        if (d.vodActor.isNotBlank()) InfoLine("主演", d.vodActor)
+                        // 线路
+                        if (d.sources.size > 1) {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            ) {
+                                d.sources.forEachIndexed { i, src ->
+                                    val sel = i == state.sourceIndex
+                                    Text(
+                                        src.name,
+                                        color = if (sel) AppColors.accent else AppColors.textSecondary,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
+                                        modifier = Modifier
+                                            .clickable { vm.selectSource(i); playingIndex = -1 }
+                                            .padding(vertical = 4.dp),
+                                    )
+                                }
+                            }
+                        }
+
+                        // 选集（数字格 + 正在播放标记）
+                        val src = d.sources.getOrNull(state.sourceIndex)
+                        if (src != null) {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                                    .padding(top = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "选集",
+                                    color = AppColors.textPrimary,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    "共 ${src.episodes.size} 集",
+                                    color = AppColors.textSecondary,
+                                    fontSize = 12.sp,
+                                )
+                            }
+                            EpisodeNumberGrid(
+                                episodes = src.episodes,
+                                playingIndex = playingIndex,
+                                resumeName = resume?.episodeName,
+                                onClick = { ep ->
+                                    val idx = src.episodes.indexOf(ep)
+                                    if (WebSniffer.looksLikeMedia(ep.url)) {
+                                        playingIndex = idx
+                                    } else {
+                                        playFullscreen(state.sourceIndex, idx)
+                                    }
+                                },
+                            )
+                        }
+
+                        // 简介
                         if (d.vodContent.isNotBlank()) {
-                            InfoLine("简介", "")
+                            SectionHeader("简介")
                             var expanded by remember { mutableStateOf(false) }
                             Text(
                                 d.vodContent,
@@ -192,115 +259,30 @@ fun DetailScreen(nav: NavHostController, vodId: String, mainVm: MainViewModel = 
                                 lineHeight = 20.sp,
                                 maxLines = if (expanded) Int.MAX_VALUE else 3,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.clickable { expanded = !expanded },
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .clickable { expanded = !expanded },
                             )
-                        }
-                    }
-
-                    if (d.sources.isEmpty()) {
-                        Box(
-                            Modifier
-                                .padding(horizontal = 16.dp)
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(AppColors.accentSoft)
-                                .padding(12.dp),
-                        ) {
-                            Text(
-                                "该源未提供播放地址（vod_play_url 为空），可能是源服务端做了地址脱敏，或需要其他取址方式",
-                                color = AppColors.accent,
-                                fontSize = 12.sp,
-                                lineHeight = 18.sp,
-                            )
-                        }
-                    }
-
-                    HorizontalDivider(color = AppColors.divider, thickness = 0.5.dp,
-                        modifier = Modifier.padding(horizontal = 16.dp))
-
-                    // 线路（文字 Tab 风）
-                    if (d.sources.size > 1) {
-                        SectionHeader("播放线路")
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(18.dp),
-                        ) {
-                            d.sources.forEachIndexed { i, src ->
-                                val sel = i == state.sourceIndex
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier.clickable { vm.selectSource(i) },
-                                ) {
+                            if (d.vodDirector.isNotBlank() || d.vodActor.isNotBlank()) {
+                                Spacer(Modifier.height(8.dp))
+                                if (d.vodDirector.isNotBlank()) {
                                     Text(
-                                        "${src.name} (${src.episodes.size})",
-                                        color = if (sel) AppColors.accent else AppColors.textSecondary,
-                                        fontSize = 13.sp,
-                                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
+                                        "导演：${d.vodDirector}",
+                                        color = AppColors.textSecondary, fontSize = 12.sp,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                                     )
-                                    Box(
-                                        Modifier
-                                            .padding(top = 4.dp)
-                                            .width(16.dp)
-                                            .height(2.5.dp)
-                                            .clip(RoundedCornerShape(2.dp))
-                                            .background(if (sel) AppColors.accent else androidx.compose.ui.graphics.Color.Transparent)
+                                }
+                                if (d.vodActor.isNotBlank()) {
+                                    Text(
+                                        "主演：${d.vodActor}",
+                                        color = AppColors.textSecondary, fontSize = 12.sp,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                                     )
                                 }
                             }
                         }
+                        Spacer(Modifier.height(24.dp).navigationBarsPadding())
                     }
-
-                    // 选集
-                    val src = d.sources.getOrNull(state.sourceIndex)
-                    if (src != null) {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                                .padding(top = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(
-                                Modifier
-                                    .width(3.dp)
-                                    .height(14.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(AppColors.accent)
-                            )
-                            Text(
-                                "选集",
-                                color = AppColors.textPrimary,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(start = 8.dp).weight(1f),
-                            )
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clickable { vm.toggleReverse() },
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Outlined.Sort,
-                                    contentDescription = null,
-                                    tint = AppColors.textSecondary,
-                                    modifier = Modifier.size(15.dp),
-                                )
-                                Text(" 倒序", color = AppColors.textSecondary, fontSize = 12.sp)
-                            }
-                        }
-                        val eps = if (state.reversed) src.episodes.asReversed() else src.episodes
-                        EpisodeGrid(
-                            episodes = eps,
-                            highlight = state.history?.episodeName,
-                            onClick = { ep ->
-                                val idx = src.episodes.indexOf(ep)
-                                play(state.sourceIndex, idx)
-                            },
-                        )
-                    }
-                    Spacer(Modifier.height(28.dp).navigationBarsPadding())
                 }
             }
         }
@@ -308,47 +290,251 @@ fun DetailScreen(nav: NavHostController, vodId: String, mainVm: MainViewModel = 
 }
 
 @Composable
-private fun InfoLine(label: String, value: String) {
-    Row(Modifier.padding(bottom = 6.dp)) {
-        Text(label, color = AppColors.textSecondary, fontSize = 12.sp, modifier = Modifier.width(40.dp))
-        if (value.isNotBlank()) {
-            Text(value, color = AppColors.textPrimary.copy(alpha = 0.8f), fontSize = 12.sp, lineHeight = 18.sp)
+private fun DetailTopBar(nav: NavHostController) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+    ) {
+        IconButton(onClick = { nav.popBackStack() }) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = AppColors.textPrimary)
         }
     }
 }
 
 @Composable
-private fun EpisodeGrid(
-    episodes: List<com.juying.tv.data.model.Episode>,
-    highlight: String?,
-    onClick: (com.juying.tv.data.model.Episode) -> Unit,
+private fun ActionItem(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: Color = AppColors.textPrimary,
+    onClick: () -> Unit,
 ) {
-    val columns = 4
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+    ) {
+        Icon(icon, label, tint = tint, modifier = Modifier.size(22.dp))
+        Text(label, color = AppColors.textSecondary, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp))
+    }
+}
+
+/** 内嵌播放器：海报待机 → 点击/自动播放直连剧集 → 右下全屏 */
+@Composable
+private fun EmbeddedPlayer(
+    poster: String,
+    episodes: List<Episode>,
+    autoPlayIndex: Int,
+    startPosition: Long,
+    playingIndex: Int,
+    onPlayingIndexChange: (Int) -> Unit,
+    onPositionChange: (Long) -> Unit,
+    onFullscreen: () -> Unit,
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    var player by remember { mutableStateOf<ExoPlayer?>(null) }
+    var buffering by remember { mutableStateOf(false) }
+
+    // 需要播放的剧集
+    val targetIndex = if (playingIndex >= 0) playingIndex else -1
+
+    // 自动播放：仅当历史续播或首集为直连媒体时
+    LaunchedEffect(episodes) {
+        if (playingIndex < 0 && episodes.isNotEmpty()) {
+            val idx = autoPlayIndex.coerceIn(0, episodes.size - 1)
+            if (WebSniffer.looksLikeMedia(episodes[idx].url)) {
+                onPlayingIndexChange(idx)
+            }
+        }
+    }
+
+    // 播放切换
+    LaunchedEffect(targetIndex) {
+        if (targetIndex < 0) return@LaunchedEffect
+        val ep = episodes.getOrNull(targetIndex) ?: return@LaunchedEffect
+        buffering = true
+        val p = player ?: ExoPlayer.Builder(context)
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(context)
+                    .setDataSourceFactory(OkHttpDataSource.Factory(Http.mediaClient).setUserAgent(Http.UA))
+            )
+            .build()
+            .also { player = it }
+        p.setMediaItem(MediaItem.fromUri(ep.url))
+        p.prepare()
+        if (startPosition > 0 && targetIndex == autoPlayIndex) p.seekTo(startPosition)
+        p.playWhenReady = true
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            player?.let { onPositionChange(it.currentPosition) }
+            player?.release()
+            player = null
+        }
+    }
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .aspectRatio(16f / 9f)
+            .background(Color.Black),
+    ) {
+        if (targetIndex >= 0 && player != null) {
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        useController = false
+                        this.player = player
+                    }
+                },
+                update = { it.player = player },
+                modifier = Modifier.fillMaxSize(),
+            )
+            // 播放状态监听
+            LaunchedEffect(player) {
+                player?.addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(state: Int) {
+                        buffering = state == Player.STATE_BUFFERING
+                        if (state == Player.STATE_ENDED) {
+                            // 自动下一集
+                            val next = targetIndex + 1
+                            if (next < episodes.size && WebSniffer.looksLikeMedia(episodes[next].url)) {
+                                onPlayingIndexChange(next)
+                            }
+                        }
+                    }
+                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                        buffering = false
+                        onPlayingIndexChange(-1) // 回退到海报，用户可进全屏(带嗅探)
+                    }
+                })
+            }
+            // 点击暂停/播放
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clickable {
+                        player?.let { if (it.isPlaying) it.pause() else it.play() }
+                    },
+            )
+            if (buffering) {
+                CircularProgressIndicator(
+                    color = AppColors.accent,
+                    modifier = Modifier.align(Alignment.Center).size(36.dp),
+                    strokeWidth = 3.dp,
+                )
+            }
+        } else {
+            // 海报待机
+            AsyncImage(
+                model = poster,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+                alpha = 0.55f,
+            )
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xB3000000))
+                    .clickable {
+                        val idx = autoPlayIndex.coerceIn(0, (episodes.size - 1).coerceAtLeast(0))
+                        if (episodes.isNotEmpty() && WebSniffer.looksLikeMedia(episodes[idx].url)) {
+                            onPlayingIndexChange(idx)
+                        } else {
+                            onFullscreen()
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.PlayArrow,
+                    contentDescription = "播放",
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+        }
+
+        // 顶部渐变 + 返回
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopStart)
+                .background(Brush.verticalGradient(listOf(Color(0x80000000), Color.Transparent)))
+                .statusBarsPadding()
+                .padding(horizontal = 4.dp),
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = Color.White)
+            }
+        }
+        // 右下全屏
+        IconButton(
+            onClick = onFullscreen,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(6.dp),
+        ) {
+            Icon(Icons.Outlined.Fullscreen, "全屏", tint = Color.White)
+        }
+    }
+}
+
+/** 芒果风数字选集格：6 列，正在播放橙色标记 */
+@Composable
+private fun EpisodeNumberGrid(
+    episodes: List<Episode>,
+    playingIndex: Int,
+    resumeName: String?,
+    onClick: (Episode) -> Unit,
+) {
+    val columns = 6
     val rows = episodes.chunked(columns)
     Column(
-        Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp),
+        Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         rows.forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 row.forEach { ep ->
-                    val isHl = ep.name == highlight
+                    val idx = episodes.indexOf(ep)
+                    val isPlaying = idx == playingIndex
+                    val isResume = playingIndex < 0 && ep.name == resumeName
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(if (isHl) AppColors.accentSoft else AppColors.fill)
+                            .background(
+                                when {
+                                    isPlaying -> AppColors.accent
+                                    isResume -> AppColors.accentSoft
+                                    else -> AppColors.fill
+                                }
+                            )
                             .clickable { onClick(ep) }
-                            .padding(vertical = 10.dp),
+                            .padding(vertical = 9.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            ep.name,
-                            color = if (isHl) AppColors.accent else AppColors.textPrimary.copy(alpha = 0.8f),
+                            ep.name.replace("第", "").replace("集", ""),
+                            color = when {
+                                isPlaying -> Color.White
+                                isResume -> AppColors.accent
+                                else -> AppColors.textPrimary.copy(alpha = 0.8f)
+                            },
                             fontSize = 12.sp,
+                            fontWeight = if (isPlaying) FontWeight.Bold else FontWeight.Normal,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 4.dp),
+                            modifier = Modifier.padding(horizontal = 2.dp),
                         )
                     }
                 }

@@ -99,6 +99,85 @@ fun VodCard(item: VodItem, onClick: () -> Unit, modifier: Modifier = Modifier) {
     }
 }
 
+/** 芒果风两列大卡：横幅图 + 左下备注(渐变) + 右下橙标 + 双行标题 */
+@Composable
+fun HomeCard(item: VodItem, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.clickable(onClick = onClick)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.80f)
+                .clip(RoundedCornerShape(10.dp))
+                .background(AppColors.fill)
+        ) {
+            val placeholder = ColorPainter(AppColors.fill)
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(item.vodPic)
+                    .size(540, 680)
+                    .crossfade(false)
+                    .build(),
+                contentDescription = item.vodName,
+                contentScale = ContentScale.Crop,
+                placeholder = placeholder,
+                error = placeholder,
+                fallback = placeholder,
+                modifier = Modifier.fillMaxSize(),
+            )
+            // 左下：备注（黑色渐变底）
+            if (item.vodRemarks.isNotBlank()) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .background(
+                            androidx.compose.ui.graphics.Brush.verticalGradient(
+                                listOf(Color.Transparent, Color(0x99000000))
+                            )
+                        )
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
+                ) {
+                    Text(
+                        item.vodRemarks,
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            // 右下：橙色类型标
+            if (item.typeName.isNotBlank()) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(AppColors.accent)
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        item.typeName,
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+        }
+        Text(
+            item.vodName,
+            color = AppColors.textPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            lineHeight = 19.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 7.dp, start = 2.dp, end = 2.dp),
+        )
+    }
+}
+
 /** 加载中 */
 @Composable
 fun LoadingView(text: String = "加载中…") {

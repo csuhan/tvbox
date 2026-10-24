@@ -31,6 +31,7 @@ import com.juying.tv.data.source.ConfigState
 import com.juying.tv.ui.HomeViewModel
 import com.juying.tv.ui.MainViewModel
 import com.juying.tv.ui.components.*
+import com.juying.tv.ui.components.HomeCard
 import com.juying.tv.ui.theme.AppColors
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -118,6 +119,7 @@ fun HomeScreen(nav: NavHostController, mainVm: MainViewModel) {
                         val typeId = if (pageIndex == 0) "" else state.classes[pageIndex - 1].typeId
                         CategoryPage(
                             page = state.pages[typeId],
+                            isHome = typeId.isEmpty(),
                             onRefresh = { vm.refreshClass(typeId) },
                             onLoadMore = { vm.loadMore(typeId) },
                             onItemClick = { item -> nav.navigate("detail/${item.vodId}") },
@@ -173,6 +175,7 @@ private fun TabText(text: String, selected: Boolean) {
 @Composable
 private fun CategoryPage(
     page: HomeViewModel.ClassPage?,
+    isHome: Boolean,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onItemClick: (com.juying.tv.data.model.VodItem) -> Unit,
@@ -193,18 +196,27 @@ private fun CategoryPage(
 
             PullToRefreshBox(isRefreshing = page.loading, onRefresh = onRefresh) {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
+                    columns = GridCells.Fixed(2),
                     state = gridState,
                     contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
+                    // 推荐页顶部：Hero 轮播（芒果风）
+                    if (isHome && page.items.size >= 5) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            HeroBanner(
+                                items = page.items.take(5),
+                                onItemClick = onItemClick,
+                            )
+                        }
+                    }
                     items(
                         count = page.items.size,
                         key = { i -> "${page.items[i].vodId}_$i" },
                     ) { i ->
-                        VodCard(page.items[i], onClick = { onItemClick(page.items[i]) })
+                        HomeCard(page.items[i], onClick = { onItemClick(page.items[i]) })
                     }
                     if (page.loadingMore) {
                         item(span = { GridItemSpan(maxLineSpan) }) {
@@ -299,6 +311,109 @@ private fun SiteRow(site: Site, selected: Boolean, onClick: () -> Unit) {
         )
         if (selected) {
             Text("当前", color = AppColors.accent, fontSize = 12.sp)
+        }
+    }
+}
+
+
+/** 芒果风 Hero 轮播：大图 + 渐变标题 + 指示点 + 4s 自动滚动 */
+@Composable
+private fun HeroBanner(
+    items: List<com.juying.tv.data.model.VodItem>,
+    onItemClick: (com.juying.tv.data.model.VodItem) -> Unit,
+) {
+    val pagerState = rememberPagerState(pageCount = { items.size })
+    LaunchedEffect(items) {
+        while (true) {
+            kotlinx.coroutines.delay(4000)
+            if (items.isNotEmpty()) {
+                pagerState.animateScrollToPage((pagerState.currentPage + 1) % items.size)
+            }
+        }
+    }
+    Box(
+        Modifier
+            .padding(top = 4.dp, bottom = 6.dp)
+            .fillMaxWidth()
+            .aspectRatio(1.9f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(AppColors.fill),
+    ) {
+        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { i ->
+            val item = items[i]
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clickable { onItemClick(item) },
+            ) {
+                val placeholder = androidx.compose.ui.graphics.painter.ColorPainter(AppColors.fill)
+                coil.compose.AsyncImage(
+                    model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                        .data(item.vodPic)
+                        .size(900, 480)
+                        .crossfade(false)
+                        .build(),
+                    contentDescription = item.vodName,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    placeholder = placeholder,
+                    error = placeholder,
+                    fallback = placeholder,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                // 底部渐变 + 标题
+                Box(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .background(
+                            androidx.compose.ui.graphics.Brush.verticalGradient(
+                                listOf(
+                                    androidx.compose.ui.graphics.Color.Transparent,
+                                    androidx.compose.ui.graphics.Color(0xB3000000),
+                                )
+                            )
+                        )
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                ) {
+                    Column {
+                        if (item.vodRemarks.isNotBlank()) {
+                            Text(
+                                item.vodRemarks,
+                                color = AppColors.accent,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        Text(
+                            item.vodName,
+                            color = androidx.compose.ui.graphics.Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+        // 指示点
+        Row(
+            Modifier
+                .align(Alignment.BottomEnd)
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            repeat(items.size) { i ->
+                Box(
+                    Modifier
+                        .size(if (i == pagerState.currentPage) 7.dp else 5.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(
+                            if (i == pagerState.currentPage) AppColors.accent
+                            else androidx.compose.ui.graphics.Color.White.copy(alpha = 0.6f)
+                        ),
+                )
+            }
         }
     }
 }
