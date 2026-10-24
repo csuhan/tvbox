@@ -3,16 +3,18 @@ package com.juying.tv.ui.home
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,11 +25,12 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.juying.tv.data.model.Site
+import com.juying.tv.data.model.VodClass
 import com.juying.tv.data.source.ConfigState
 import com.juying.tv.ui.HomeViewModel
 import com.juying.tv.ui.MainViewModel
 import com.juying.tv.ui.components.*
-import com.juying.tv.ui.theme.*
+import com.juying.tv.ui.theme.AppColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,65 +44,76 @@ fun HomeScreen(nav: NavHostController, mainVm: MainViewModel) {
 
     LaunchedEffect(site?.key, reset) { vm.bind(site) }
 
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        BrandBar(
-            title = "聚影",
-            subtitle = site?.name ?: "未选择站点",
-        ) {
-            IconButton(onClick = { nav.navigate("settings") }) {
-                Text("⚙", fontSize = 20.sp, color = TextSecondary)
+    Column(Modifier.fillMaxSize().background(AppColors.bg)) {
+        // 白色顶区：品牌栏 + 搜索框
+        Column(Modifier.fillMaxWidth().background(AppColors.card)) {
+            Spacer(Modifier.statusBarsPadding())
+            BrandBar(
+                title = "聚影",
+                subtitle = site?.name,
+            ) {
+                IconButton(onClick = { nav.navigate("settings") }) {
+                    Icon(Icons.Outlined.Settings, contentDescription = "设置", tint = AppColors.textSecondary)
+                }
+            }
+            // 搜索入口（浅灰填充，B站风）
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(AppColors.fill)
+                    .clickable { nav.navigate("search") }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Outlined.Search,
+                    contentDescription = null,
+                    tint = AppColors.textSecondary,
+                    modifier = Modifier.size(17.dp),
+                )
+                Text(
+                    "  搜索影片、剧集、综艺…",
+                    color = AppColors.textSecondary,
+                    fontSize = 13.sp,
+                )
             }
         }
 
-        // 搜索入口
+        // 换源入口（细文字按钮）
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(CardDark)
-                .clickable { nav.navigate("search") }
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Default.Search, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(18.dp))
-            Text("  搜索影片、剧集、综艺…", color = TextSecondary, fontSize = 14.sp)
-        }
-
-        // 换源按钮
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
+                .background(AppColors.card)
+                .clickable { showSiteSheet = true }
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(PrimarySoft)
-                    .clickable { showSiteSheet = true }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "📡 ${site?.name ?: "选择站点"}",
-                    color = Primary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-                Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = Primary, modifier = Modifier.size(16.dp))
+            Text(
+                "当前站点：${site?.name ?: "未选择"}",
+                color = AppColors.textSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.weight(1f),
+            )
+            if (site?.isSupported == false) {
+                Text("爬虫源暂不支持  ", color = AppColors.accent, fontSize = 12.sp)
             }
-            if (site != null && site?.isSupported == false) {
-                Text("  爬虫源暂不支持", color = Accent, fontSize = 12.sp)
-            }
+            Text("换源", color = AppColors.accent, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Icon(
+                Icons.Outlined.KeyboardArrowDown,
+                contentDescription = null,
+                tint = AppColors.accent,
+                modifier = Modifier.size(15.dp),
+            )
         }
+        HorizontalDivider(color = AppColors.divider, thickness = 0.5.dp)
 
         when {
-            state.error != null -> ErrorView(state.error!!) { vm.refresh() }
-            state.loading -> LoadingView()
+            state.error != null && state.items.isEmpty() -> ErrorView(state.error!!) { vm.refresh() }
+            state.loading && state.items.isEmpty() -> LoadingView()
             else -> {
                 val gridState = rememberLazyGridState()
-                // 触底加载更多
                 val shouldLoadMore by remember {
                     derivedStateOf {
                         val info = gridState.layoutInfo
@@ -109,15 +123,19 @@ fun HomeScreen(nav: NavHostController, mainVm: MainViewModel) {
                 }
                 LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) vm.loadMore() }
 
+                PullToRefreshBox(
+                    isRefreshing = state.loading,
+                    onRefresh = { vm.refresh() },
+                ) {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(3),
                     state = gridState,
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    // 分类行
+                    // B站风文字分类 Tab
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         ClassTabs(state.classes, state.selectedType) { vm.selectClass(it) }
                     }
@@ -130,22 +148,27 @@ fun HomeScreen(nav: NavHostController, mainVm: MainViewModel) {
                     }
                     if (state.loadingMore) {
                         item(span = { GridItemSpan(maxLineSpan) }) {
-                            Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(color = Primary, modifier = Modifier.size(24.dp))
+                            Box(Modifier.fillMaxWidth().padding(14.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(
+                                    color = AppColors.accent,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(22.dp),
+                                )
                             }
                         }
                     }
+                }
                 }
             }
         }
     }
 
-    // 站点选择
     if (showSiteSheet) {
         val cfg = (configState as? ConfigState.Success)?.config
         ModalBottomSheet(
             onDismissRequest = { showSiteSheet = false },
-            containerColor = SurfaceDark,
+            containerColor = AppColors.card,
+            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
         ) {
             SiteSheet(
                 sites = cfg?.sites ?: emptyList(),
@@ -156,63 +179,88 @@ fun HomeScreen(nav: NavHostController, mainVm: MainViewModel) {
     }
 }
 
+/** 分类 Tab：material3 ScrollableTabRow（官方指示器动画） */
 @Composable
-private fun ClassTabs(classes: List<com.juying.tv.data.model.VodClass>, selected: String?, onSelect: (String?) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+private fun ClassTabs(classes: List<VodClass>, selected: String?, onSelect: (String?) -> Unit) {
+    val selectedIndex = (classes.indexOfFirst { it.typeId == selected } + 1).coerceAtLeast(0)
+    ScrollableTabRow(
+        selectedTabIndex = selectedIndex,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
+        edgePadding = 12.dp,
+        divider = {},
+        indicator = { positions ->
+            if (selectedIndex < positions.size) {
+                TabRowDefaults.SecondaryIndicator(
+                    Modifier.tabIndicatorOffset(positions[selectedIndex]),
+                    color = AppColors.accent,
+                )
+            }
+        },
     ) {
-        ClassChip("推荐", selected == null) { onSelect(null) }
+        Tab(selected = selected == null, onClick = { onSelect(null) }) {
+            TabText("推荐", selected == null)
+        }
         classes.forEach { c ->
-            ClassChip(c.typeName, selected == c.typeId) { onSelect(c.typeId) }
+            Tab(selected = selected == c.typeId, onClick = { onSelect(c.typeId) }) {
+                TabText(c.typeName, selected == c.typeId)
+            }
         }
     }
 }
 
 @Composable
-private fun ClassChip(text: String, selected: Boolean, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(if (selected) Primary else CardDark)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 7.dp),
-    ) {
-        Text(
-            text,
-            color = if (selected) androidx.compose.ui.graphics.Color.White else TextSecondary,
-            fontSize = 13.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-        )
-    }
+private fun TabText(text: String, selected: Boolean) {
+    Text(
+        text,
+        color = if (selected) AppColors.accent else AppColors.textSecondary,
+        fontSize = if (selected) 15.sp else 14.sp,
+        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+        modifier = Modifier.padding(vertical = 10.dp),
+    )
 }
 
 @Composable
 fun SiteSheet(sites: List<Site>, current: Site?, onSelect: (Site) -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
-        Text("选择站点", color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(vertical = 10.dp))
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 28.dp)
+    ) {
+        Text(
+            "选择站点",
+            color = AppColors.textPrimary,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(vertical = 12.dp),
+        )
         val supported = sites.filter { it.isSupported }
         val unsupported = sites.filter { !it.isSupported }
-        Text("可用站点（${supported.size}）", color = Secondary, fontSize = 12.sp)
-        Spacer(Modifier.height(6.dp))
         Column(
-            Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = 440.dp)
+                .verticalScroll(rememberScrollState()),
         ) {
+            Text("可用站点 · ${supported.size}", color = AppColors.textSecondary, fontSize = 12.sp)
+            Spacer(Modifier.height(4.dp))
             supported.forEach { s ->
                 SiteRow(s, current?.key == s.key) { onSelect(s) }
             }
             if (unsupported.isNotEmpty()) {
-                Text("爬虫源（暂不支持，${unsupported.size}）", color = TextSecondary, fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 10.dp, bottom = 4.dp))
+                Text(
+                    "爬虫源（当前版本暂不支持）· ${unsupported.size}",
+                    color = AppColors.textSecondary,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
+                )
                 unsupported.take(20).forEach { s ->
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(CardDark.copy(alpha = 0.5f))
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                    ) {
-                        Text(s.name, color = TextSecondary.copy(alpha = 0.5f), fontSize = 13.sp)
-                    }
+                    Text(
+                        s.name,
+                        color = AppColors.textSecondary.copy(alpha = 0.45f),
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(vertical = 10.dp),
+                    )
                 }
             }
         }
@@ -222,15 +270,21 @@ fun SiteSheet(sites: List<Site>, current: Site?, onSelect: (Site) -> Unit) {
 @Composable
 private fun SiteRow(site: Site, selected: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (selected) PrimarySoft else CardDark)
+        Modifier
+            .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 11.dp),
+            .padding(vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(site.name, color = if (selected) Primary else TextPrimary, fontSize = 14.sp,
-            modifier = Modifier.weight(1f))
-        if (selected) Icon(Icons.Default.Check, contentDescription = null, tint = Primary, modifier = Modifier.size(18.dp))
+        Text(
+            site.name,
+            color = if (selected) AppColors.accent else AppColors.textPrimary,
+            fontSize = 14.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            modifier = Modifier.weight(1f),
+        )
+        if (selected) {
+            Text("当前", color = AppColors.accent, fontSize = 12.sp)
+        }
     }
 }

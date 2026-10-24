@@ -9,8 +9,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,10 +24,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.juying.tv.ui.LibraryViewModel
 import com.juying.tv.ui.components.BrandBar
-import com.juying.tv.ui.theme.*
+import com.juying.tv.ui.components.SectionHeader
+import com.juying.tv.ui.theme.AppColors
 
 @Composable
 fun MineScreen(nav: NavHostController) {
@@ -36,80 +38,136 @@ fun MineScreen(nav: NavHostController) {
     var showClearConfirm by remember { mutableStateOf(false) }
 
     Column(
-        Modifier.fillMaxSize().statusBarsPadding()
+        Modifier
+            .fillMaxSize()
+            .background(AppColors.bg)
             .verticalScroll(rememberScrollState()),
     ) {
-        BrandBar(title = "我的")
+        Column(Modifier.fillMaxWidth().background(AppColors.card)) {
+            Spacer(Modifier.statusBarsPadding())
+            BrandBar(title = "我的")
+        }
 
-        // 功能入口
-        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            MenuRow("⚙️", "设置与数据源", "管理接口、站点与偏好") { nav.navigate("settings") }
-            MenuRow("🗑", "清空观看历史", "共 ${history.size} 条记录") { showClearConfirm = true }
+        // 功能入口（分组卡片 + ListItem）
+        Card(
+            colors = CardDefaults.cardColors(containerColor = AppColors.card),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            ListItem(
+                headlineContent = { Text("设置与数据源") },
+                supportingContent = { Text("管理接口、站点与偏好") },
+                leadingContent = { Icon(Icons.Outlined.Settings, null, tint = AppColors.accent) },
+                trailingContent = {
+                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = AppColors.textSecondary)
+                },
+                colors = ListItemDefaults.colors(containerColor = AppColors.card),
+                modifier = Modifier.clickable { nav.navigate("settings") },
+            )
+            HorizontalDivider(color = AppColors.divider, thickness = 0.5.dp, modifier = Modifier.padding(start = 56.dp))
+            ListItem(
+                headlineContent = { Text("清空观看历史") },
+                supportingContent = { Text("共 ${history.size} 条记录") },
+                leadingContent = { Icon(Icons.Outlined.DeleteOutline, null, tint = AppColors.textSecondary) },
+                trailingContent = {
+                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = AppColors.textSecondary)
+                },
+                colors = ListItemDefaults.colors(containerColor = AppColors.card),
+                modifier = Modifier.clickable { showClearConfirm = true },
+            )
         }
 
         // 观看历史
-        SectionTitle("观看历史", if (history.isEmpty()) "暂无记录" else "继续观看")
+        SectionHeader("观看历史", if (history.isEmpty()) "暂无记录" else "${history.size} 条")
         if (history.isEmpty()) {
-            Text("看过的影片会出现在这里", color = TextSecondary, fontSize = 12.sp,
-                modifier = Modifier.padding(horizontal = 16.dp))
+            Text(
+                "看过的影片会出现在这里",
+                color = AppColors.textSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
         } else {
             LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(history.take(30), key = { it.siteKey + it.vodId }) { h ->
-                    Column(
-                        Modifier.width(104.dp).clickable { nav.navigate("detail/${h.vodId}") },
-                    ) {
+                    Column(Modifier.width(104.dp).clickable { nav.navigate("detail/${h.vodId}") }) {
                         Box {
-                            AsyncImage(
-                                model = h.vodPic, contentDescription = h.vodName,
+                            SubcomposeAsyncImage(
+                                model = h.vodPic,
+                                contentDescription = h.vodName,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
-                                    .fillMaxWidth().height(146.dp)
-                                    .clip(RoundedCornerShape(10.dp)).background(CardDark),
+                                    .fillMaxWidth()
+                                    .height(146.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(AppColors.fill),
                             )
                             if (h.duration > 0) {
                                 val p = (h.position.toFloat() / h.duration).coerceIn(0f, 1f)
                                 LinearProgressIndicator(
                                     progress = { p },
-                                    modifier = Modifier.align(Alignment.BottomCenter)
-                                        .fillMaxWidth().padding(horizontal = 6.dp).padding(bottom = 6.dp)
-                                        .height(3.dp).clip(RoundedCornerShape(2.dp)),
-                                    color = Accent,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 6.dp)
+                                        .padding(bottom = 6.dp)
+                                        .height(3.dp)
+                                        .clip(RoundedCornerShape(2.dp)),
+                                    color = AppColors.accent,
                                     trackColor = androidx.compose.ui.graphics.Color(0x66FFFFFF),
                                 )
                             }
                         }
-                        Text(h.vodName, color = TextPrimary, fontSize = 12.sp, maxLines = 1,
-                            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 5.dp))
-                        Text(h.episodeName, color = TextSecondary, fontSize = 11.sp, maxLines = 1)
+                        Text(
+                            h.vodName,
+                            color = AppColors.textPrimary,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 5.dp),
+                        )
+                        Text(h.episodeName, color = AppColors.textSecondary, fontSize = 11.sp, maxLines = 1)
                     }
                 }
             }
         }
 
         // 收藏
-        SectionTitle("我的收藏", "${favorites.size} 部")
+        SectionHeader("我的收藏", "${favorites.size} 部")
         if (favorites.isEmpty()) {
-            Text("收藏的影片会出现在这里", color = TextSecondary, fontSize = 12.sp,
-                modifier = Modifier.padding(horizontal = 16.dp))
+            Text(
+                "收藏的影片会出现在这里",
+                color = AppColors.textSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
         } else {
             LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(favorites.take(30), key = { it.siteKey + it.vodId }) { f ->
                     Column(Modifier.width(104.dp).clickable { nav.navigate("detail/${f.vodId}") }) {
-                        AsyncImage(
-                            model = f.vodPic, contentDescription = f.vodName,
+                        SubcomposeAsyncImage(
+                            model = f.vodPic,
+                            contentDescription = f.vodName,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
-                                .fillMaxWidth().height(146.dp)
-                                .clip(RoundedCornerShape(10.dp)).background(CardDark),
+                                .fillMaxWidth()
+                                .height(146.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(AppColors.fill),
                         )
-                        Text(f.vodName, color = TextPrimary, fontSize = 12.sp, maxLines = 1,
-                            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 5.dp))
+                        Text(
+                            f.vodName,
+                            color = AppColors.textPrimary,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 5.dp),
+                        )
                     }
                 }
             }
@@ -120,48 +178,17 @@ fun MineScreen(nav: NavHostController) {
     if (showClearConfirm) {
         AlertDialog(
             onDismissRequest = { showClearConfirm = false },
-            containerColor = SurfaceDark,
-            title = { Text("清空历史", color = TextPrimary) },
-            text = { Text("确定要清空全部观看历史吗？", color = TextSecondary) },
+            containerColor = AppColors.card,
+            title = { Text("清空历史", color = AppColors.textPrimary) },
+            text = { Text("确定要清空全部观看历史吗？", color = AppColors.textSecondary) },
             confirmButton = {
                 TextButton(onClick = { vm.clearHistory(); showClearConfirm = false }) {
-                    Text("清空", color = Accent)
+                    Text("清空", color = AppColors.accent)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) { Text("取消", color = TextSecondary) }
+                TextButton(onClick = { showClearConfirm = false }) { Text("取消", color = AppColors.textSecondary) }
             },
         )
-    }
-}
-
-@Composable
-private fun MenuRow(icon: String, title: String, subtitle: String, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(CardDark)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(icon, fontSize = 20.sp)
-        Column(Modifier.padding(start = 12.dp).weight(1f)) {
-            Text(title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            Text(subtitle, color = TextSecondary, fontSize = 12.sp)
-        }
-        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = TextSecondary)
-    }
-}
-
-@Composable
-private fun SectionTitle(title: String, subtitle: String) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 20.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(title, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.weight(1f))
-        Text(subtitle, color = TextSecondary, fontSize = 12.sp)
     }
 }

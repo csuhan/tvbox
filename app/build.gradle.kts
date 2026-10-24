@@ -65,6 +65,8 @@ dependencies {
 
     // Image
     implementation("io.coil-kt:coil-compose:2.7.0")
+    // 微光加载效果（Maven Central，配合 Coil 做海报 shimmer）
+    implementation("com.valentinilk.shimmer:compose-shimmer:1.3.2")
 
     // DB
     implementation("androidx.room:room-runtime:2.6.1")

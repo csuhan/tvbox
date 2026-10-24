@@ -44,7 +44,7 @@ object SourceManager {
 
     /** 推荐接口（来自聚玩盒子等公开列表） */
     val recommended = listOf(
-        SourceEntry("🔞 业余采集", "https://szyyds.cn/tv/x.json"),
+        SourceEntry("业余采集", "https://szyyds.cn/tv/x.json"),
         SourceEntry("欧歌", "http://tv.nxog.top/m/"),
         SourceEntry("俊于", "http://home.jundie.top:81/top98.json"),
         SourceEntry("饭太硬", "http://fty.888484.xyz/tv"),

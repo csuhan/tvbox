@@ -3,16 +3,17 @@ package com.juying.tv.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -20,11 +21,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.juying.tv.data.model.VodItem
-import com.juying.tv.ui.theme.*
+import com.juying.tv.ui.theme.AppColors
+import com.valentinilk.shimmer.shimmer
 
-/** 海报卡片 */
+/** B站风海报卡片：圆角封面 + 右上角角标 + 双行标题 */
 @Composable
 fun VodCard(item: VodItem, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Column(modifier = modifier.clickable(onClick = onClick)) {
@@ -32,47 +34,60 @@ fun VodCard(item: VodItem, onClick: () -> Unit, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(0.72f)
-                .clip(RoundedCornerShape(12.dp))
-                .background(CardDark)
+                .clip(RoundedCornerShape(10.dp))
+                .background(AppColors.fill)
         ) {
             if (item.vodPic.isBlank()) {
-                // 无封面占位：渐变底 + 片名首字
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Brush.linearGradient(listOf(CardDark, PrimarySoft))),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        item.vodName.take(2),
-                        color = Primary,
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Bold,
+                // 无封面：极简占位
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Outlined.PlayCircle,
+                        contentDescription = null,
+                        tint = AppColors.textSecondary.copy(alpha = 0.4f),
+                        modifier = Modifier.size(34.dp),
                     )
                 }
             } else {
-                AsyncImage(
+                SubcomposeAsyncImage(
                     model = item.vodPic,
                     contentDescription = item.vodName,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
+                    loading = {
+                        // 微光占位（shimmer 库）
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .shimmer()
+                                .background(AppColors.fill)
+                        )
+                    },
+                    error = {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Outlined.PlayCircle,
+                                contentDescription = null,
+                                tint = AppColors.textSecondary.copy(alpha = 0.4f),
+                                modifier = Modifier.size(34.dp),
+                            )
+                        }
+                    },
                 )
             }
-            // 底部渐变 + 备注
+            // 右上角标（B站风）
             if (item.vodRemarks.isNotBlank()) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .background(
-                            Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000)))
-                        )
-                        .padding(horizontal = 8.dp, vertical = 5.dp)
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(Color(0xB3000000))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
                 ) {
                     Text(
                         item.vodRemarks,
-                        color = Accent,
-                        fontSize = 11.sp,
+                        color = Color.White,
+                        fontSize = 9.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -81,12 +96,13 @@ fun VodCard(item: VodItem, onClick: () -> Unit, modifier: Modifier = Modifier) {
         }
         Text(
             item.vodName,
-            color = TextPrimary,
+            color = AppColors.textPrimary,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
-            maxLines = 1,
+            lineHeight = 18.sp,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp, start = 2.dp, end = 2.dp),
+            modifier = Modifier.padding(top = 7.dp, start = 1.dp, end = 1.dp),
         )
     }
 }
@@ -96,8 +112,17 @@ fun VodCard(item: VodItem, onClick: () -> Unit, modifier: Modifier = Modifier) {
 fun LoadingView(text: String = "加载中…") {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(color = Primary)
-            Text(text, color = TextSecondary, fontSize = 13.sp, modifier = Modifier.padding(top = 12.dp))
+            CircularProgressIndicator(
+                color = AppColors.accent,
+                strokeWidth = 3.dp,
+                modifier = Modifier.size(36.dp),
+            )
+            Text(
+                text,
+                color = AppColors.textSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(top = 14.dp),
+            )
         }
     }
 }
@@ -107,21 +132,31 @@ fun LoadingView(text: String = "加载中…") {
 fun ErrorView(message: String, onRetry: (() -> Unit)? = null) {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("😵", fontSize = 40.sp)
+            Box(
+                Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(AppColors.fill),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(":(", color = AppColors.textSecondary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
             Text(
                 message,
-                color = TextSecondary,
+                color = AppColors.textSecondary,
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 12.dp),
+                lineHeight = 21.sp,
+                modifier = Modifier.padding(top = 16.dp),
             )
             if (onRetry != null) {
                 Button(
                     onClick = onRetry,
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                    modifier = Modifier.padding(top = 16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AppColors.accent),
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.padding(top = 20.dp),
                 ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                     Text("  重试", fontSize = 14.sp)
                 }
             }
@@ -134,34 +169,99 @@ fun ErrorView(message: String, onRetry: (() -> Unit)? = null) {
 fun EmptyView(text: String) {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("🍿", fontSize = 40.sp)
-            Text(text, color = TextSecondary, fontSize = 14.sp, modifier = Modifier.padding(top = 12.dp))
+            Box(
+                Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(AppColors.fill),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.PlayCircle,
+                    contentDescription = null,
+                    tint = AppColors.textSecondary.copy(alpha = 0.5f),
+                    modifier = Modifier.size(30.dp),
+                )
+            }
+            Text(text, color = AppColors.textSecondary, fontSize = 14.sp, modifier = Modifier.padding(top = 16.dp))
         }
     }
 }
 
-/** 顶部品牌条 */
+/** 顶部品牌栏：文字标 + 点缀，右侧操作 */
 @Composable
 fun BrandBar(title: String, subtitle: String? = null, trailing: (@Composable RowScope.() -> Unit)? = null) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AppColors.card)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                color = AppColors.textPrimary,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+            )
+            Box(
+                Modifier
+                    .padding(start = 3.dp, bottom = 4.dp)
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(AppColors.accent)
+            )
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    color = AppColors.textSecondary,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 10.dp, bottom = 2.dp),
+                )
+            }
+        }
+        if (trailing != null) Row(verticalAlignment = Alignment.CenterVertically, content = trailing)
+    }
+}
+
+/** 分组标题（左侧竖线 + 标题，B站分区风） */
+@Composable
+fun SectionHeader(title: String, extra: String? = null, onMore: (() -> Unit)? = null) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .padding(top = 18.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Brush.linearGradient(listOf(Primary, Secondary))),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+            Modifier
+                .width(3.dp)
+                .height(14.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(AppColors.accent)
+        )
+        Text(
+            title,
+            color = AppColors.textPrimary,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 8.dp).weight(1f),
+        )
+        if (extra != null) {
+            Text(extra, color = AppColors.textSecondary, fontSize = 12.sp)
         }
-        Column(Modifier.padding(start = 10.dp).weight(1f)) {
-            Text(title, color = TextPrimary, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-            if (subtitle != null) {
-                Text(subtitle, color = TextSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
+        if (onMore != null) {
+            Icon(
+                Icons.AutoMirrored.Outlined.ArrowForward,
+                contentDescription = null,
+                tint = AppColors.textSecondary,
+                modifier = Modifier.size(14.dp).clickable(onClick = onMore),
+            )
         }
-        if (trailing != null) Row(content = trailing)
     }
 }

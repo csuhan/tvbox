@@ -44,8 +44,7 @@ import com.juying.tv.data.remote.Http
 import com.juying.tv.data.source.ConfigState
 import com.juying.tv.data.source.SourceManager
 import com.juying.tv.ui.theme.JyTheme
-import com.juying.tv.ui.theme.Primary
-import com.juying.tv.ui.theme.TextSecondary
+import com.juying.tv.ui.theme.Accent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -434,7 +433,7 @@ class PlayerActivity : ComponentActivity() {
             // 缓冲
             if (st.buffering && st.error == null) {
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = Primary)
+                    CircularProgressIndicator(color = Accent)
                     Text(if (st.sniffing) "正在嗅探真实播放地址…" else "加载中…",
                         color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp,
                         modifier = Modifier.padding(top = 8.dp))
@@ -452,7 +451,7 @@ class PlayerActivity : ComponentActivity() {
                     if (!isLive) {
                         Button(
                             onClick = { nextEpisode() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                            colors = ButtonDefaults.buttonColors(containerColor = Accent),
                             modifier = Modifier.padding(top = 12.dp),
                         ) { Text("播放下一集") }
                     }
@@ -518,7 +517,7 @@ class PlayerActivity : ComponentActivity() {
                                 },
                                 modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                                 colors = SliderDefaults.colors(
-                                    thumbColor = Primary, activeTrackColor = Primary,
+                                    thumbColor = Accent, activeTrackColor = Accent,
                                     inactiveTrackColor = Color.White.copy(alpha = 0.3f),
                                 ),
                             )
@@ -577,14 +576,14 @@ class PlayerActivity : ComponentActivity() {
                                     Modifier.fillMaxWidth()
                                         .padding(vertical = 3.dp)
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(if (sel) Primary.copy(alpha = 0.25f) else Color.Transparent)
+                                        .background(if (sel) Accent.copy(alpha = 0.25f) else Color.Transparent)
                                         .clickable {
                                             playEpisode(i)
                                             uiState.value = uiState.value.copy(episodesVisible = false)
                                         }
                                         .padding(horizontal = 12.dp, vertical = 10.dp),
                                 ) {
-                                    Text(name, color = if (sel) Primary else Color.White.copy(alpha = 0.85f),
+                                    Text(name, color = if (sel) Accent else Color.White.copy(alpha = 0.85f),
                                         fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                             }
