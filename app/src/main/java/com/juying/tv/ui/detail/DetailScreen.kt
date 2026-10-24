@@ -82,7 +82,6 @@ fun DetailScreen(nav: NavHostController, vodId: String, mainVm: MainViewModel = 
             IconButton(onClick = { nav.popBackStack() }) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = AppColors.textPrimary)
             }
-            Text("影片详情", color = AppColors.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Medium)
         }
         HorizontalDivider(color = AppColors.divider, thickness = 0.5.dp)
 

@@ -8,9 +8,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 // —— 品牌色（参考B站粉，略收敛更文艺） ——
-val Accent = Color(0xFFFB7299)
-val AccentSoft = Color(0x1AFB7299)
-val AccentDark = Color(0xFFE0628A)
+val Accent = Color(0xFF3E9C87)
+val AccentSoft = Color(0x1A3E9C87)
+val AccentDark = Color(0xFF2E7D6D)
 
 // —— 浅色（主） ——
 val BgLight = Color(0xFFF4F5F7)

@@ -30,7 +30,6 @@ import com.juying.tv.data.source.ConfigState
 import com.juying.tv.player.PlayerActivity
 import com.juying.tv.ui.LiveViewModel
 import com.juying.tv.ui.MainViewModel
-import com.juying.tv.ui.components.BrandBar
 import com.juying.tv.ui.components.EmptyView
 import com.juying.tv.ui.components.ErrorView
 import com.juying.tv.ui.components.LoadingView
@@ -50,8 +49,6 @@ fun LiveScreen(nav: NavHostController, mainVm: MainViewModel) {
 
     Column(Modifier.fillMaxSize().background(AppColors.card)) {
         Spacer(Modifier.statusBarsPadding())
-        BrandBar(title = "直播", subtitle = state.liveSources.getOrNull(state.sourceIndex)?.name)
-        HorizontalDivider(color = AppColors.divider, thickness = 0.5.dp)
 
         when {
             state.loading -> LoadingView("加载频道…")

@@ -26,7 +26,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import coil.compose.SubcomposeAsyncImage
 import com.juying.tv.ui.LibraryViewModel
-import com.juying.tv.ui.components.BrandBar
 import com.juying.tv.ui.components.SectionHeader
 import com.juying.tv.ui.theme.AppColors
 
@@ -43,10 +42,7 @@ fun MineScreen(nav: NavHostController) {
             .background(AppColors.bg)
             .verticalScroll(rememberScrollState()),
     ) {
-        Column(Modifier.fillMaxWidth().background(AppColors.card)) {
-            Spacer(Modifier.statusBarsPadding())
-            BrandBar(title = "我的")
-        }
+        Spacer(Modifier.statusBarsPadding())
 
         // 功能入口（分组卡片 + ListItem）
         Card(

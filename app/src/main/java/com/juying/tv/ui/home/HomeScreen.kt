@@ -9,9 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -36,76 +34,53 @@ import com.juying.tv.ui.theme.AppColors
 @Composable
 fun HomeScreen(nav: NavHostController, mainVm: MainViewModel) {
     val vm: HomeViewModel = viewModel()
-    val configState by mainVm.configState.collectAsState()
     val site by mainVm.currentSite.collectAsState()
     val reset by mainVm.homeReset.collectAsState()
     val state by vm.state.collectAsState()
-    var showSiteSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(site?.key, reset) { vm.bind(site) }
 
     Column(Modifier.fillMaxSize().background(AppColors.bg)) {
-        // 白色顶区：品牌栏 + 搜索框
-        Column(Modifier.fillMaxWidth().background(AppColors.card)) {
-            Spacer(Modifier.statusBarsPadding())
-            BrandBar(
-                title = "聚影",
-                subtitle = site?.name,
-            ) {
-                IconButton(onClick = { nav.navigate("settings") }) {
-                    Icon(Icons.Outlined.Settings, contentDescription = "设置", tint = AppColors.textSecondary)
-                }
-            }
-            // 搜索入口（浅灰填充，B站风）
+        // 顶区：纤细品牌行（小标识 + 搜索图标）+ 分类 Tab
+        // 外层 Box 负责白色背景（含状态栏区域），内层 padding 只负责内容下移
+        Box(Modifier.fillMaxWidth().background(AppColors.card)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .statusBarsPadding(),
+        ) {
             Row(
-                modifier = Modifier
+                Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(AppColors.fill)
-                    .clickable { nav.navigate("search") }
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(start = 16.dp, end = 4.dp, top = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    Icons.Outlined.Search,
-                    contentDescription = null,
-                    tint = AppColors.textSecondary,
-                    modifier = Modifier.size(17.dp),
+                Box(
+                    Modifier
+                        .size(7.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(AppColors.accent)
                 )
                 Text(
-                    "  搜索影片、剧集、综艺…",
-                    color = AppColors.textSecondary,
-                    fontSize = 13.sp,
+                    "聚影",
+                    color = AppColors.textPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.padding(start = 6.dp),
                 )
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = { nav.navigate("search") }) {
+                    Icon(
+                        Icons.Outlined.Search,
+                        contentDescription = "搜索",
+                        tint = AppColors.textPrimary,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
             }
+            ClassTabs(state.classes, state.selectedType) { vm.selectClass(it) }
         }
-
-        // 换源入口（细文字按钮）
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(AppColors.card)
-                .clickable { showSiteSheet = true }
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                "当前站点：${site?.name ?: "未选择"}",
-                color = AppColors.textSecondary,
-                fontSize = 12.sp,
-                modifier = Modifier.weight(1f),
-            )
-            if (site?.isSupported == false) {
-                Text("爬虫源暂不支持  ", color = AppColors.accent, fontSize = 12.sp)
-            }
-            Text("换源", color = AppColors.accent, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-            Icon(
-                Icons.Outlined.KeyboardArrowDown,
-                contentDescription = null,
-                tint = AppColors.accent,
-                modifier = Modifier.size(15.dp),
-            )
         }
         HorizontalDivider(color = AppColors.divider, thickness = 0.5.dp)
 
@@ -135,10 +110,6 @@ fun HomeScreen(nav: NavHostController, mainVm: MainViewModel) {
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    // B站风文字分类 Tab
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        ClassTabs(state.classes, state.selectedType) { vm.selectClass(it) }
-                    }
                     items(
                         count = state.items.size,
                         key = { i -> "${state.items[i].vodId}_$i" },
@@ -160,21 +131,6 @@ fun HomeScreen(nav: NavHostController, mainVm: MainViewModel) {
                 }
                 }
             }
-        }
-    }
-
-    if (showSiteSheet) {
-        val cfg = (configState as? ConfigState.Success)?.config
-        ModalBottomSheet(
-            onDismissRequest = { showSiteSheet = false },
-            containerColor = AppColors.card,
-            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-        ) {
-            SiteSheet(
-                sites = cfg?.sites ?: emptyList(),
-                current = site,
-                onSelect = { mainVm.selectSite(it); showSiteSheet = false },
-            )
         }
     }
 }

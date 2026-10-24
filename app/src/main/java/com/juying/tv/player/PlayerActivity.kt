@@ -1,28 +1,29 @@
 package com.juying.tv.player
 
 import android.content.Context
-import android.content.Intent
 import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.widget.ImageButton
+import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,21 +34,26 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
-import androidx.media3.common.VideoSize
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.juying.tv.R
 import com.juying.tv.data.local.AppDatabase
 import com.juying.tv.data.local.HistoryEntity
 import com.juying.tv.data.remote.Http
 import com.juying.tv.data.source.ConfigState
 import com.juying.tv.data.source.SourceManager
-import com.juying.tv.ui.theme.JyTheme
 import com.juying.tv.ui.theme.Accent
+import com.juying.tv.ui.theme.JyTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/**
+ * 播放器：Media3 官方 StyledPlayerView 控制器（自动隐藏/进度条/快进退）
+ * + 自定义按钮（选集/倍速/比例/上下集）+ Compose 手势层与选集抽屉
+ */
 class PlayerActivity : ComponentActivity() {
 
     companion object {
@@ -73,40 +79,38 @@ class PlayerActivity : ComponentActivity() {
     private var playHeaders: Map<String, String> = emptyMap()
     private var sniffTriedFor: String? = null
 
-    // 播放状态（Compose 驱动）
+    // 控制器视图引用
+    private var titleView: TextView? = null
+    private var episodeView: TextView? = null
+    private var speedView: TextView? = null
+
     private val uiState = mutableStateOf(PlayerUiState())
 
     data class PlayerUiState(
-        val title: String = "",
-        val episodeName: String = "",
-        val playing: Boolean = false,
         val buffering: Boolean = true,
         val sniffing: Boolean = false,
         val error: String? = null,
-        val controlsVisible: Boolean = true,
+        val controlsVisible: Boolean = false,
         val episodesVisible: Boolean = false,
-        val speed: Float = 1.0f,
-        val scaleMode: Int = 0, // 0 fit 1 fill 2 zoom
-        val position: Long = 0L,
-        val duration: Long = 0L,
-        val currentEp: Int = 0,
-        val locked: Boolean = false,
         val gestureHint: String? = null,
+        val currentEp: Int = 0,
+        val scaleMode: Int = 0,
     )
 
-    // 点播数据
     private var epNames: List<String> = emptyList()
     private var epUrls: List<String> = emptyList()
     private var currentEp = 0
     private var isLive = false
-    private var liveUrls: List<String> = emptyList()
-    private var liveUrlIndex = 0
-    private var bufferingSince = 0L
     private var siteKey = ""
     private var vodId = ""
     private var pic = ""
     private var sourceName = ""
     private var sourceIndex = 0
+    private var title = ""
+    private var liveUrls: List<String> = emptyList()
+    private var liveUrlIndex = 0
+    private var bufferingSince = 0L
+    private var speed = 1.0f
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -123,13 +127,9 @@ class PlayerActivity : ComponentActivity() {
         epUrls = intent.getStringArrayListExtra(EXTRA_EP_URLS) ?: arrayListOf()
         currentEp = intent.getIntExtra(EXTRA_EPISODE_INDEX, 0)
         val startPos = intent.getLongExtra(EXTRA_START_POSITION, 0L)
-        val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
+        title = intent.getStringExtra(EXTRA_TITLE) ?: ""
 
-        uiState.value = uiState.value.copy(
-            title = title,
-            episodeName = if (isLive) "直播" else epNames.getOrNull(currentEp) ?: "",
-            currentEp = currentEp,
-        )
+        uiState.value = uiState.value.copy(currentEp = currentEp)
 
         initPlayer()
         if (isLive) {
@@ -142,20 +142,16 @@ class PlayerActivity : ComponentActivity() {
             playEpisode(currentEp, startPos)
         }
 
-        setContent {
-            JyTheme { PlayerScreen() }
-        }
+        setContent { JyTheme { PlayerScreen() } }
 
-        // 进度轮询 + 历史保存 + 直播缓冲看门狗
+        // 历史保存 + 直播看门狗
         lifecycleScope.launch {
             while (true) {
                 delay(1000)
                 val p = player ?: continue
                 if (!isLive && p.duration > 0) {
-                    uiState.value = uiState.value.copy(position = p.currentPosition, duration = p.duration)
                     saveHistory(p.currentPosition, p.duration)
                 }
-                // 直播缓冲超过 15 秒：换下一条线路，没有则报错
                 if (isLive && bufferingSince > 0 &&
                     System.currentTimeMillis() - bufferingSince > 15000
                 ) {
@@ -183,30 +179,23 @@ class PlayerActivity : ComponentActivity() {
             .build()
             .apply {
                 addListener(object : Player.Listener {
-                    override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        uiState.value = uiState.value.copy(playing = isPlaying)
-                    }
                     override fun onPlaybackStateChanged(state: Int) {
-                        if (state == Player.STATE_BUFFERING) {
-                            bufferingSince = System.currentTimeMillis()
-                        } else {
-                            bufferingSince = 0L
-                        }
+                        bufferingSince = if (state == Player.STATE_BUFFERING)
+                            System.currentTimeMillis() else 0L
                         uiState.value = uiState.value.copy(
                             buffering = state == Player.STATE_BUFFERING,
                             error = if (state == Player.STATE_IDLE) uiState.value.error else null,
                         )
                         if (state == Player.STATE_ENDED && !isLive) nextEpisode()
                     }
+
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                        // 直播：自动尝试下一条线路
                         if (isLive && liveUrlIndex + 1 < liveUrls.size) {
                             liveUrlIndex++
                             playDirect(liveUrls[liveUrlIndex], 0L, emptyMap())
                             return
                         }
                         val cur = if (isLive) liveUrls.getOrNull(liveUrlIndex) else epUrls.getOrNull(currentEp)
-                        // 直连失败且未嗅探过 → 自动嗅探一次
                         if (!isLive && cur != null && sniffTriedFor != cur) {
                             sniffTriedFor = cur
                             sniffAndPlay(cur, 0L)
@@ -217,7 +206,6 @@ class PlayerActivity : ComponentActivity() {
                             error = "播放失败：${error.errorCodeName}\n该地址可能需要解析或已失效，试试其他线路/站点",
                         )
                     }
-                    override fun onVideoSizeChanged(videoSize: VideoSize) {}
                 })
             }
     }
@@ -235,15 +223,13 @@ class PlayerActivity : ComponentActivity() {
         playHeaders = headers
         dsFactory?.setDefaultRequestProperties(headers)
         uiState.value = uiState.value.copy(error = null, buffering = true, sniffing = false)
-        val item = MediaItem.Builder().setUri(url).build()
-        p.setMediaItem(item)
+        p.setMediaItem(MediaItem.Builder().setUri(url).build())
         p.prepare()
         if (startPos > 0) p.seekTo(startPos)
         p.playWhenReady = true
     }
 
     private fun sniffAndPlay(pageUrl: String, startPos: Long) {
-        // 候选：原页面 + 接口配置里的解析API(jx)
         val candidates = mutableListOf(pageUrl)
         val cfg = (SourceManager.configState.value as? ConfigState.Success)?.config
         cfg?.parses?.filter { it.type == 0 && it.url.startsWith("http") }?.take(3)?.forEach {
@@ -254,7 +240,6 @@ class PlayerActivity : ComponentActivity() {
 
     private fun sniffNext(original: String, candidates: List<String>, index: Int, startPos: Long) {
         if (index >= candidates.size) {
-            // 全部失败，直接尝试原地址
             playDirect(original, startPos, emptyMap())
             return
         }
@@ -274,11 +259,8 @@ class PlayerActivity : ComponentActivity() {
         val url = epUrls.getOrNull(index) ?: return
         sniffTriedFor = null
         currentEp = index
-        uiState.value = uiState.value.copy(
-            episodeName = epNames.getOrNull(index) ?: "",
-            currentEp = index,
-            position = 0, duration = 0,
-        )
+        uiState.value = uiState.value.copy(currentEp = index)
+        episodeView?.text = epNames.getOrNull(index) ?: ""
         playUrl(url, startPos)
     }
 
@@ -299,15 +281,15 @@ class PlayerActivity : ComponentActivity() {
         val db = AppDatabase.get(this)
         lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             runCatching {
-            db.history().upsert(
-                HistoryEntity(
-                    siteKey = siteKey, vodId = vodId,
-                    vodName = uiState.value.title, vodPic = pic,
-                    sourceName = sourceName, sourceIndex = sourceIndex,
-                    episodeIndex = currentEp, episodeName = uiState.value.episodeName,
-                    position = position, duration = duration,
+                db.history().upsert(
+                    HistoryEntity(
+                        siteKey = siteKey, vodId = vodId,
+                        vodName = title, vodPic = pic,
+                        sourceName = sourceName, sourceIndex = sourceIndex,
+                        episodeIndex = currentEp, episodeName = epNames.getOrNull(currentEp) ?: "",
+                        position = position, duration = duration,
+                    )
                 )
-            )
             }
         }
     }
@@ -318,125 +300,189 @@ class PlayerActivity : ComponentActivity() {
         c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
     }
 
-    private fun toggleControls() {
-        uiState.value = uiState.value.copy(controlsVisible = !uiState.value.controlsVisible)
+    // ---------------- 控制器装配 ----------------
+
+    private fun createPlayerView(): PlayerView {
+        val view = LayoutInflater.from(this).inflate(R.layout.player_view, null) as PlayerView
+        view.player = player
+        view.controllerShowTimeoutMs = 4000
+
+        titleView = view.findViewById(R.id.video_title)
+        episodeView = view.findViewById(R.id.video_episode)
+        speedView = view.findViewById(R.id.btn_speed)
+
+        titleView?.text = title
+        episodeView?.text = if (isLive) "直播" else epNames.getOrNull(currentEp) ?: ""
+
+        view.findViewById<ImageButton>(R.id.btn_back)?.setOnClickListener { finish() }
+        view.findViewById<ImageButton>(R.id.btn_aspect)?.setOnClickListener {
+            uiState.value = uiState.value.copy(scaleMode = (uiState.value.scaleMode + 1) % 3)
+        }
+        view.findViewById<ImageButton>(R.id.btn_prev_ep)?.setOnClickListener { prevEpisode() }
+        view.findViewById<ImageButton>(R.id.btn_next_ep)?.setOnClickListener { nextEpisode() }
+        speedView?.setOnClickListener {
+            val speeds = listOf(0.5f, 1.0f, 1.25f, 1.5f, 2.0f, 3.0f)
+            speed = speeds[(speeds.indexOf(speed) + 1) % speeds.size]
+            player?.setPlaybackSpeed(speed)
+            speedView?.text = "${speed}x"
+        }
+        view.findViewById<TextView>(R.id.btn_episodes)?.setOnClickListener {
+            uiState.value = uiState.value.copy(episodesVisible = !uiState.value.episodesVisible)
+            view.hideController()
+        }
+
+        // 直播模式隐藏进度相关控件
+        if (isLive) {
+            listOf(
+                androidx.media3.ui.R.id.exo_position,
+                androidx.media3.ui.R.id.exo_duration,
+                androidx.media3.ui.R.id.exo_progress,
+                androidx.media3.ui.R.id.exo_rew,
+                androidx.media3.ui.R.id.exo_ffwd,
+                R.id.btn_prev_ep,
+                R.id.btn_next_ep,
+                R.id.btn_episodes,
+            ).forEach { view.findViewById<View>(it)?.visibility = View.GONE }
+        }
+
+        view.setControllerVisibilityListener(
+            PlayerView.ControllerVisibilityListener { visibility ->
+                uiState.value = uiState.value.copy(controlsVisible = visibility == View.VISIBLE)
+            }
+        )
+        return view
     }
 
-    // ---------------- UI ----------------
+    // ---------------- Compose 浮层 ----------------
 
     @Composable
     private fun PlayerScreen() {
         val st by uiState
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            // 视频画面
+            // 视频画面（官方控制器）
             androidx.compose.ui.viewinterop.AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        useController = false
-                        player = this@PlayerActivity.player
-                        playerView = this
-                        resizeMode = when (st.scaleMode) {
-                            1 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-                            2 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                            else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        }
-                        setOnClickListener { toggleControls() }
-                    }
-                },
+                factory = { createPlayerView().also { playerView = it } },
                 update = { view ->
                     view.resizeMode = when (st.scaleMode) {
-                        1 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-                        2 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                        else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        1 -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                        2 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
             )
 
-            // 手势层：左半屏亮度 / 右半屏音量 / 水平拖动快进退
-            var seekAccum by remember { mutableStateOf(0f) }
-            var seekBase by remember { mutableStateOf(0L) }
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .pointerInput(isLive) {
-                        detectHorizontalDragGestures(
-                            onDragStart = {
-                                if (!isLive) {
-                                    seekAccum = 0f
-                                    seekBase = player?.currentPosition ?: 0L
-                                }
-                            },
-                            onDragEnd = {
-                                if (!isLive) {
-                                    val target = (seekBase + (seekAccum * 120).toLong())
-                                        .coerceIn(0L, player?.duration ?: Long.MAX_VALUE)
-                                    player?.seekTo(target)
-                                    uiState.value = uiState.value.copy(gestureHint = null)
-                                }
-                            },
-                        ) { change, dragAmount ->
-                            if (isLive) return@detectHorizontalDragGestures
-                            change.consume()
-                            seekAccum += dragAmount
-                            val deltaSec = (seekAccum * 120 / 1000).toInt()
-                            val sign = if (deltaSec >= 0) "+" else "-"
-                            uiState.value = uiState.value.copy(
-                                gestureHint = "⏩ $sign${kotlin.math.abs(deltaSec)}s"
+            // 手势层：仅控制器隐藏时接管（点击唤出/双击快进/滑动亮度音量进度）
+            if (!st.controlsVisible) {
+                var seekAccum by remember { mutableStateOf(0f) }
+                var seekBase by remember { mutableStateOf(0L) }
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .pointerInput(isLive) {
+                            detectTapGestures(
+                                onTap = { playerView?.showController() },
+                                onDoubleTap = { offset ->
+                                    if (!isLive) {
+                                        val p = player ?: return@detectTapGestures
+                                        if (offset.x < size.width / 2) {
+                                            p.seekTo((p.currentPosition - 10000).coerceAtLeast(0))
+                                            uiState.value = uiState.value.copy(gestureHint = "⏪ -10s")
+                                        } else {
+                                            p.seekTo(p.currentPosition + 10000)
+                                            uiState.value = uiState.value.copy(gestureHint = "⏩ +10s")
+                                        }
+                                    }
+                                },
                             )
                         }
-                    }
-                    .pointerInput(Unit) {
-                        detectVerticalDragGestures(
-                            onDragEnd = { uiState.value = uiState.value.copy(gestureHint = null) },
-                        ) { change, dragAmount ->
-                            change.consume()
-                            val isLeft = change.position.x < size.width / 2
-                            if (isLeft) {
-                                // 亮度
-                                val lp = window.attributes
-                                val cur = if (lp.screenBrightness < 0) 0.5f else lp.screenBrightness
-                                val next = (cur - dragAmount / size.height).coerceIn(0.02f, 1f)
-                                lp.screenBrightness = next
-                                window.attributes = lp
+                        .pointerInput(isLive) {
+                            detectHorizontalDragGestures(
+                                onDragStart = {
+                                    if (!isLive) {
+                                        seekAccum = 0f
+                                        seekBase = player?.currentPosition ?: 0L
+                                    }
+                                },
+                                onDragEnd = {
+                                    if (!isLive) {
+                                        val target = (seekBase + (seekAccum * 120).toLong())
+                                            .coerceIn(0L, player?.duration ?: Long.MAX_VALUE)
+                                        player?.seekTo(target)
+                                        uiState.value = uiState.value.copy(gestureHint = null)
+                                    }
+                                },
+                            ) { change, dragAmount ->
+                                if (isLive) return@detectHorizontalDragGestures
+                                change.consume()
+                                seekAccum += dragAmount
+                                val deltaSec = (seekAccum * 120 / 1000).toInt()
+                                val sign = if (deltaSec >= 0) "+" else "-"
                                 uiState.value = uiState.value.copy(
-                                    gestureHint = "☀️ ${(next * 100).toInt()}%"
-                                )
-                            } else {
-                                // 音量
-                                val am = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-                                val max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
-                                val cur = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
-                                val next = (cur - (dragAmount / (size.height / max.toFloat())).toInt())
-                                    .coerceIn(0, max)
-                                if (next != cur) am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, next, 0)
-                                uiState.value = uiState.value.copy(
-                                    gestureHint = if (next == 0) "🔇 静音" else "🔊 $next/$max"
+                                    gestureHint = "$sign${kotlin.math.abs(deltaSec)}s"
                                 )
                             }
                         }
-                    },
-            )
+                        .pointerInput(Unit) {
+                            detectVerticalDragGestures(
+                                onDragEnd = { uiState.value = uiState.value.copy(gestureHint = null) },
+                            ) { change, dragAmount ->
+                                change.consume()
+                                val isLeft = change.position.x < size.width / 2
+                                if (isLeft) {
+                                    val lp = window.attributes
+                                    val cur = if (lp.screenBrightness < 0) 0.5f else lp.screenBrightness
+                                    val next = (cur - dragAmount / size.height).coerceIn(0.02f, 1f)
+                                    lp.screenBrightness = next
+                                    window.attributes = lp
+                                    uiState.value = uiState.value.copy(
+                                        gestureHint = "亮度 ${(next * 100).toInt()}%"
+                                    )
+                                } else {
+                                    val am = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                                    val max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+                                    val cur = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+                                    val next = (cur - (dragAmount / (size.height / max.toFloat())).toInt())
+                                        .coerceIn(0, max)
+                                    if (next != cur) am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, next, 0)
+                                    uiState.value = uiState.value.copy(
+                                        gestureHint = if (next == 0) "静音" else "音量 $next/$max"
+                                    )
+                                }
+                            }
+                        },
+                )
+            }
 
-            // 手势反馈
+            // 手势反馈（短暂显示后自动消失）
             st.gestureHint?.let { hint ->
+                LaunchedEffect(hint) {
+                    delay(900)
+                    if (uiState.value.gestureHint == hint) {
+                        uiState.value = uiState.value.copy(gestureHint = null)
+                    }
+                }
                 Box(
-                    Modifier.align(Alignment.Center)
-                        .clip(RoundedCornerShape(12.dp))
+                    Modifier
+                        .align(Alignment.Center)
+                        .clip(RoundedCornerShape(10.dp))
                         .background(Color(0xAA000000))
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
                 ) {
-                    Text(hint, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(hint, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
-            // 缓冲
+            // 缓冲 / 嗅探
             if (st.buffering && st.error == null) {
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = Accent)
-                    Text(if (st.sniffing) "正在嗅探真实播放地址…" else "加载中…",
-                        color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp,
-                        modifier = Modifier.padding(top = 8.dp))
+                    CircularProgressIndicator(color = Accent, strokeWidth = 3.dp)
+                    Text(
+                        if (st.sniffing) "正在嗅探真实播放地址…" else "加载中…",
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
                 }
             }
 
@@ -446,116 +492,16 @@ class PlayerActivity : ComponentActivity() {
                     Modifier.align(Alignment.Center).padding(32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text(st.error!!, color = Color.White, fontSize = 14.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    Text(
+                        st.error!!, color = Color.White, fontSize = 14.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
                     if (!isLive) {
                         Button(
                             onClick = { nextEpisode() },
                             colors = ButtonDefaults.buttonColors(containerColor = Accent),
-                            modifier = Modifier.padding(top = 12.dp),
+                            modifier = Modifier.padding(top = 14.dp),
                         ) { Text("播放下一集") }
-                    }
-                }
-            }
-
-            // 控制层
-            if (st.controlsVisible) {
-                // 顶栏
-                Row(
-                    Modifier.fillMaxWidth().align(Alignment.TopCenter)
-                        .background(androidx.compose.ui.graphics.Brush.verticalGradient(
-                            listOf(Color(0xAA000000), Color.Transparent)))
-                        .statusBarsPadding()
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(onClick = { finish() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Color.White)
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text(st.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (st.episodeName.isNotBlank()) {
-                            Text(st.episodeName, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
-                        }
-                    }
-                    // 倍速
-                    TextButton(onClick = {
-                        val speeds = listOf(0.5f, 1.0f, 1.25f, 1.5f, 2.0f, 3.0f)
-                        val next = speeds[(speeds.indexOf(st.speed) + 1) % speeds.size]
-                        player?.setPlaybackSpeed(next)
-                        uiState.value = uiState.value.copy(speed = next)
-                    }) {
-                        Text("${st.speed}x", color = Color.White, fontSize = 14.sp)
-                    }
-                    // 画面比例
-                    IconButton(onClick = {
-                        uiState.value = uiState.value.copy(scaleMode = (st.scaleMode + 1) % 3)
-                    }) {
-                        Icon(Icons.Default.Settings, contentDescription = "比例", tint = Color.White)
-                    }
-                }
-
-                // 底部控制
-                Column(
-                    Modifier.fillMaxWidth().align(Alignment.BottomCenter)
-                        .background(androidx.compose.ui.graphics.Brush.verticalGradient(
-                            listOf(Color.Transparent, Color(0xCC000000))))
-                        .navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                ) {
-                    if (!isLive) {
-                        // 进度条
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(formatTime(st.position), color = Color.White, fontSize = 12.sp)
-                            Slider(
-                                value = if (st.duration > 0) st.position.toFloat() / st.duration else 0f,
-                                onValueChange = { v ->
-                                    val target = (v * st.duration).toLong()
-                                    player?.seekTo(target)
-                                    uiState.value = uiState.value.copy(position = target)
-                                },
-                                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Accent, activeTrackColor = Accent,
-                                    inactiveTrackColor = Color.White.copy(alpha = 0.3f),
-                                ),
-                            )
-                            Text(formatTime(st.duration), color = Color.White, fontSize = 12.sp)
-                        }
-                    }
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                    ) {
-                        if (!isLive) {
-                            IconButton(onClick = { prevEpisode() }, enabled = st.currentEp > 0) {
-                                Icon(Icons.Default.SkipPrevious, contentDescription = "上一集",
-                                    tint = if (st.currentEp > 0) Color.White else Color.White.copy(alpha = 0.3f))
-                            }
-                        }
-                        IconButton(onClick = {
-                            val p = player ?: return@IconButton
-                            if (p.isPlaying) p.pause() else p.play()
-                        }, modifier = Modifier.size(56.dp)) {
-                            Icon(
-                                if (st.playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = "播放/暂停", tint = Color.White,
-                                modifier = Modifier.size(40.dp),
-                            )
-                        }
-                        if (!isLive) {
-                            IconButton(onClick = { nextEpisode() }, enabled = st.currentEp < epUrls.size - 1) {
-                                Icon(Icons.Default.SkipNext, contentDescription = "下一集",
-                                    tint = if (st.currentEp < epUrls.size - 1) Color.White else Color.White.copy(alpha = 0.3f))
-                            }
-                            TextButton(onClick = {
-                                uiState.value = uiState.value.copy(episodesVisible = !st.episodesVisible)
-                            }) {
-                                Text("选集", color = Color.White, fontSize = 14.sp)
-                            }
-                        }
                     }
                 }
             }
@@ -563,28 +509,56 @@ class PlayerActivity : ComponentActivity() {
             // 选集抽屉
             if (st.episodesVisible && !isLive) {
                 Box(
-                    Modifier.fillMaxHeight().width(220.dp).align(Alignment.CenterEnd)
-                        .background(Color(0xEE10131C)),
+                    Modifier
+                        .fillMaxHeight()
+                        .width(230.dp)
+                        .align(Alignment.CenterEnd)
+                        .background(Color(0xF2141518))
+                        .clickable(enabled = true, onClick = {}), // 拦截点击
                 ) {
                     Column {
-                        Text("选集 (${epNames.size})", color = Color.White, fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp))
+                        Row(
+                            Modifier.fillMaxWidth().padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "选集 (${epNames.size})",
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                "关闭",
+                                color = Color.White.copy(alpha = 0.6f),
+                                fontSize = 12.sp,
+                                modifier = Modifier.clickable {
+                                    uiState.value = uiState.value.copy(episodesVisible = false)
+                                },
+                            )
+                        }
                         LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
                             itemsIndexed(epNames) { i, name ->
                                 val sel = i == st.currentEp
                                 Box(
-                                    Modifier.fillMaxWidth()
+                                    Modifier
+                                        .fillMaxWidth()
                                         .padding(vertical = 3.dp)
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(if (sel) Accent.copy(alpha = 0.25f) else Color.Transparent)
+                                        .background(if (sel) Accent.copy(alpha = 0.22f) else Color.Transparent)
                                         .clickable {
                                             playEpisode(i)
                                             uiState.value = uiState.value.copy(episodesVisible = false)
                                         }
-                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        .padding(horizontal = 12.dp, vertical = 11.dp),
                                 ) {
-                                    Text(name, color = if (sel) Accent else Color.White.copy(alpha = 0.85f),
-                                        fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        name,
+                                        color = if (sel) Accent else Color.White.copy(alpha = 0.85f),
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
                                 }
                             }
                         }
@@ -592,15 +566,6 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    private fun formatTime(ms: Long): String {
-        if (ms <= 0) return "00:00"
-        val s = ms / 1000
-        val h = s / 3600
-        val m = (s % 3600) / 60
-        val sec = s % 60
-        return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec)
     }
 
     override fun onPause() {

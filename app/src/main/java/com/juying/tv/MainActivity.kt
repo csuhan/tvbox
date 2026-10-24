@@ -62,6 +62,8 @@ fun TabsScreen(rootNav: NavHostController) {
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        // 各页面自行处理状态栏/导航栏 insets，Scaffold 不再叠加顶部 padding
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         bottomBar = {
             NavigationBar(
                 containerColor = MaterialTheme.colorScheme.surface,

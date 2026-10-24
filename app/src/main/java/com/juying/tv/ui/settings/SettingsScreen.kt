@@ -13,6 +13,7 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,14 +30,18 @@ import com.juying.tv.data.source.SourceEntry
 import com.juying.tv.data.source.SourceManager
 import com.juying.tv.ui.MainViewModel
 import com.juying.tv.ui.components.SectionHeader
+import com.juying.tv.ui.home.SiteSheet
 import com.juying.tv.ui.theme.AppColors
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(nav: NavHostController, mainVm: MainViewModel = viewModel()) {
     val configState by mainVm.configState.collectAsState()
     val configUrl by mainVm.configUrl.collectAsState()
     val mySources by mainVm.sources.collectAsState()
     var showAdd by remember { mutableStateOf(false) }
+    var showSiteSheet by remember { mutableStateOf(false) }
+    val currentSite by mainVm.currentSite.collectAsState()
 
     Column(
         Modifier
@@ -90,6 +95,20 @@ fun SettingsScreen(nav: NavHostController, mainVm: MainViewModel = viewModel()) 
                     }
                 },
                 colors = ListItemDefaults.colors(containerColor = AppColors.card),
+            )
+            HorizontalDivider(color = AppColors.divider, thickness = 0.5.dp, modifier = Modifier.padding(start = 56.dp))
+            ListItem(
+                headlineContent = { Text("换源（站点切换）", fontSize = 14.sp) },
+                supportingContent = {
+                    Text(
+                        "当前：${currentSite?.name ?: "未选择"}",
+                        fontSize = 12.sp,
+                        color = if (currentSite?.isSupported == false) AppColors.accent else AppColors.textSecondary,
+                    )
+                },
+                leadingContent = { Icon(Icons.Outlined.SwapHoriz, null, tint = AppColors.accent) },
+                colors = ListItemDefaults.colors(containerColor = AppColors.card),
+                modifier = Modifier.clickable { showSiteSheet = true },
             )
         }
 
@@ -182,6 +201,21 @@ fun SettingsScreen(nav: NavHostController, mainVm: MainViewModel = viewModel()) 
             )
         }
         Spacer(Modifier.height(32.dp).navigationBarsPadding())
+    }
+
+    if (showSiteSheet) {
+        val cfg = (configState as? ConfigState.Success)?.config
+        ModalBottomSheet(
+            onDismissRequest = { showSiteSheet = false },
+            containerColor = AppColors.card,
+            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+        ) {
+            SiteSheet(
+                sites = cfg?.sites ?: emptyList(),
+                current = currentSite,
+                onSelect = { mainVm.selectSite(it); showSiteSheet = false },
+            )
+        }
     }
 
     if (showAdd) {
