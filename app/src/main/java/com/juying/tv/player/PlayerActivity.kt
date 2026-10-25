@@ -3,6 +3,7 @@ package com.juying.tv.player
 import android.content.Context
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.WindowManager
 import android.view.View
 import android.widget.ImageButton
 import android.widget.TextView
@@ -67,6 +68,7 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_EP_NAMES = "ep_names"
         const val EXTRA_EP_URLS = "ep_urls"
         const val EXTRA_START_POSITION = "start_pos"
+        const val EXTRA_HANDOFF_ID = "handoff_id"
         const val EXTRA_LIVE = "live"
         const val EXTRA_LIVE_URL = "live_url"
         const val EXTRA_LIVE_URLS = "live_urls"
@@ -74,6 +76,9 @@ class PlayerActivity : ComponentActivity() {
 
     private var player: ExoPlayer? = null
     private var playerView: PlayerView? = null
+    private var playerListener: Player.Listener? = null
+    private var usingSharedPlayer = false
+    private var playbackKey = ""
     private var sniffer: WebSniffer? = null
     private var dsFactory: OkHttpDataSource.Factory? = null
     private var playHeaders: Map<String, String> = emptyMap()
@@ -131,15 +136,40 @@ class PlayerActivity : ComponentActivity() {
 
         uiState.value = uiState.value.copy(currentEp = currentEp)
 
-        initPlayer()
-        if (isLive) {
-            liveUrls = intent.getStringArrayListExtra(EXTRA_LIVE_URLS)
-                ?: arrayListOf(intent.getStringExtra(EXTRA_LIVE_URL) ?: "")
-            liveUrls = liveUrls.filter { it.isNotBlank() }
-            liveUrlIndex = 0
-            playUrl(liveUrls.firstOrNull() ?: "", 0L)
+        // 交接标识优先用详情页传入的 handoffId（站点 key 不稳定，见 mergeConfigs）
+        val sharedKey = intent.getStringExtra(EXTRA_HANDOFF_ID)
+            ?: PlayerHolder.keyOf(siteKey, vodId)
+        playbackKey = sharedKey
+        val shared = if (!isLive && PlayerHolder.vodKey == sharedKey) PlayerHolder.player else null
+        if (shared != null) {
+            // 小窗 → 大窗：附着同一播放器实例，无缝续播不重新加载
+            usingSharedPlayer = true
+            PlayerHolder.handoff = false
+            PlayerHolder.fullscreenActive = true
+            player = shared
+            dsFactory = PlayerHolder.factory
+            attachPlayerListener(shared)
+            if (PlayerHolder.currentTag == PlayerHolder.tagOf(sharedKey, currentEp)) {
+                uiState.value = uiState.value.copy(
+                    buffering = shared.playbackState == Player.STATE_BUFFERING,
+                )
+                shared.playWhenReady = true
+            } else {
+                // 小窗播的不是这一集：在同一实例上切换
+                playEpisode(currentEp, startPos)
+            }
         } else {
-            playEpisode(currentEp, startPos)
+            if (!isLive && PlayerHolder.player != null) PlayerHolder.release() // 清理残留
+            initPlayer()
+            if (isLive) {
+                liveUrls = intent.getStringArrayListExtra(EXTRA_LIVE_URLS)
+                    ?: arrayListOf(intent.getStringExtra(EXTRA_LIVE_URL) ?: "")
+                liveUrls = liveUrls.filter { it.isNotBlank() }
+                liveUrlIndex = 0
+                playUrl(liveUrls.firstOrNull() ?: "", 0L)
+            } else {
+                playEpisode(currentEp, startPos)
+            }
         }
 
         setContent { JyTheme { PlayerScreen() } }
@@ -177,8 +207,21 @@ class PlayerActivity : ComponentActivity() {
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(factory))
             .build()
-            .apply {
-                addListener(object : Player.Listener {
+            .also { attachPlayerListener(it) }
+    }
+
+    private fun setKeepScreenOn(on: Boolean) {
+        if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    private fun attachPlayerListener(p: ExoPlayer) {
+        val listener = object : Player.Listener {
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        // 播放中屏幕常亮，暂停/结束恢复自动息屏
+                        setKeepScreenOn(isPlaying)
+                    }
+
                     override fun onPlaybackStateChanged(state: Int) {
                         bufferingSince = if (state == Player.STATE_BUFFERING)
                             System.currentTimeMillis() else 0L
@@ -206,8 +249,10 @@ class PlayerActivity : ComponentActivity() {
                             error = "播放失败：${error.errorCodeName}\n该地址可能需要解析或已失效，试试其他线路/站点",
                         )
                     }
-                })
-            }
+        }
+        playerListener = listener
+        p.addListener(listener)
+        setKeepScreenOn(p.isPlaying)
     }
 
     private fun playUrl(url: String, startPos: Long) {
@@ -259,6 +304,9 @@ class PlayerActivity : ComponentActivity() {
         val url = epUrls.getOrNull(index) ?: return
         sniffTriedFor = null
         currentEp = index
+        if (usingSharedPlayer) {
+            PlayerHolder.currentTag = PlayerHolder.tagOf(playbackKey, index)
+        }
         uiState.value = uiState.value.copy(currentEp = index)
         episodeView?.text = epNames.getOrNull(index) ?: ""
         playUrl(url, startPos)
@@ -578,7 +626,14 @@ class PlayerActivity : ComponentActivity() {
         sniffer?.release()
         player?.let { saveHistory(it.currentPosition, it.duration) }
         playerView?.player = null
-        player?.release()
+        if (usingSharedPlayer) {
+            // 交还给小窗：只摘掉本页的监听，不释放播放器，返回详情页继续播
+            player?.let { p -> playerListener?.let { p.removeListener(it) } }
+            PlayerHolder.fullscreenActive = false
+        } else {
+            player?.release()
+        }
         player = null
+        playerListener = null
     }
 }

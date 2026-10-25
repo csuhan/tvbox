@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>聚影 TVBox 手机版 — 纯粹观影，无广告免登录</title>
+<meta name="description" content="聚影：100% AI(KIMI-K3) 编写的 Android 影视聚合播放器。无广告、无需注册登录，小窗大窗无缝续播，APK 仅 2.5MB。">
+<style>
+  :root {
+    --accent: #FF8A00;
+    --accent-dark: #E67600;
+    --bg: #101114;
+    --card: #1A1C20;
+    --card2: #22252B;
+    --text: #E8E9EB;
+    --text2: #9BA0A8;
+    --divider: #2C2E33;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "PingFang SC", "HarmonicOS Sans SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.7;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+
+  /* Hero */
+  .hero {
+    text-align: center; padding: 90px 20px 70px;
+    background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(255,138,0,.18), transparent 70%);
+  }
+  .logo {
+    width: 88px; height: 88px; margin: 0 auto 22px; border-radius: 22px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 44px; box-shadow: 0 12px 40px rgba(255,138,0,.35);
+  }
+  .hero h1 { font-size: 44px; letter-spacing: 2px; }
+  .hero h1 span { color: var(--accent); }
+  .tagline { color: var(--text2); font-size: 17px; margin: 14px auto 8px; max-width: 620px; }
+  .badges { margin: 18px 0 30px; }
+  .badge {
+    display: inline-block; padding: 5px 14px; margin: 4px; border-radius: 999px;
+    background: var(--card2); color: var(--text); font-size: 13px; border: 1px solid var(--divider);
+  }
+  .badge.ai { background: rgba(255,138,0,.14); border-color: rgba(255,138,0,.4); color: var(--accent); font-weight: 600; }
+  .btn {
+    display: inline-block; padding: 14px 38px; border-radius: 12px; font-size: 17px; font-weight: 600;
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark)); color: #fff;
+    box-shadow: 0 8px 28px rgba(255,138,0,.35); transition: transform .15s;
+  }
+  .btn:hover { transform: translateY(-2px); }
+  .btn.ghost {
+    background: transparent; border: 1px solid var(--divider); color: var(--text);
+    box-shadow: none; margin-left: 12px;
+  }
+  .ver { color: var(--text2); font-size: 13px; margin-top: 14px; }
+
+  section { padding: 64px 0; }
+  h2 { text-align: center; font-size: 30px; margin-bottom: 8px; }
+  .sub { text-align: center; color: var(--text2); margin-bottom: 40px; }
+
+  /* Features */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+  .feat {
+    background: var(--card); border: 1px solid var(--divider); border-radius: 16px; padding: 26px;
+  }
+  .feat .ic { font-size: 30px; margin-bottom: 12px; }
+  .feat h3 { font-size: 17px; margin-bottom: 6px; }
+  .feat p { color: var(--text2); font-size: 14px; }
+
+  /* Screenshots */
+  .shots { display: flex; gap: 16px; overflow-x: auto; padding: 10px 4px 24px; scroll-snap-type: x mandatory; }
+  .shots img {
+    height: 420px; border-radius: 18px; border: 1px solid var(--divider);
+    scroll-snap-align: center; flex: 0 0 auto; background: var(--card);
+  }
+  .shots img.wide { height: 300px; align-self: center; }
+  .shots::-webkit-scrollbar { height: 6px; }
+  .shots::-webkit-scrollbar-thumb { background: var(--divider); border-radius: 3px; }
+
+  /* Steps */
+  .steps { counter-reset: step; max-width: 720px; margin: 0 auto; }
+  .step {
+    position: relative; padding: 22px 22px 22px 74px; background: var(--card);
+    border: 1px solid var(--divider); border-radius: 14px; margin-bottom: 14px;
+  }
+  .step::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 20px; top: 20px; width: 36px; height: 36px;
+    border-radius: 50%; background: rgba(255,138,0,.15); color: var(--accent);
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 17px;
+  }
+  .step h3 { font-size: 16px; }
+  .step p { color: var(--text2); font-size: 14px; }
+
+  /* Gestures table */
+  table { width: 100%; max-width: 640px; margin: 0 auto; border-collapse: collapse; }
+  th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--divider); font-size: 14px; }
+  th { color: var(--accent); }
+  td:first-child { color: var(--text2); white-space: nowrap; }
+
+  footer {
+    border-top: 1px solid var(--divider); padding: 36px 0 50px; text-align: center;
+    color: var(--text2); font-size: 13px;
+  }
+  .disclaimer { max-width: 680px; margin: 0 auto 18px; text-align: left; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="logo">▶</div>
+  <h1>聚影 <span>TVBox</span> 手机版</h1>
+  <p class="tagline">无广告、无需注册登录，只有最纯粹的视频观看体验</p>
+  <div class="badges">
+    <span class="badge ai">🤖 100% AI（KIMI-K3）编写</span>
+    <span class="badge">🚫 无广告</span>
+    <span class="badge">🔓 免注册免登录</span>
+    <span class="badge">📦 APK 仅 2.5MB</span>
+    <span class="badge">🤖 Android 7.0+</span>
+  </div>
+  <div>
+    <a class="btn" href="https://github.com/csuhan/tvbox/releases/latest/download/app-release.apk">⬇ 下载 APK</a>
+    <a class="btn ghost" href="https://github.com/csuhan/tvbox">GitHub 仓库</a>
+  </div>
+  <p class="ver">v1.0.0 · 仅请求网络权限 · 明暗双主题</p>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>为什么选择聚影</h2>
+    <p class="sub">把复杂留给 AI，把纯粹留给观影</p>
+    <div class="grid">
+      <div class="feat"><div class="ic">🤖</div><h3>纯 AI 打造</h3><p>从架构到每一行代码，100% 由 AI（KIMI-K3）编写完成，是 AI 工程能力的完整展示。</p></div>
+      <div class="feat"><div class="ic">🚫</div><h3>零打扰</h3><p>无广告、无弹窗、无账号体系、无埋点统计。打开就看，看完就走。</p></div>
+      <div class="feat"><div class="ic">🔁</div><h3>小窗 ⇄ 大窗无缝续播</h3><p>详情页小窗与全屏播放共用同一播放器实例，切换零加载、进度零中断，返回不黑屏。</p></div>
+      <div class="feat"><div class="ic">🪶</div><h3>极致小巧</h3><p>R8 全量压缩，Release APK 仅约 2.5MB，秒下载秒安装。</p></div>
+      <div class="feat"><div class="ic">🔍</div><h3>网页嗅探</h3><p>非直连播放页自动在后台嗅探真实视频地址，并尝试接口内置解析。</p></div>
+      <div class="feat"><div class="ic">📺</div><h3>点播 + 直播</h3><p>兼容标准 TVBox 接口，苹果CMS 采集源、多直播源、m3u/txt 列表全支持。</p></div>
+      <div class="feat"><div class="ic">💡</div><h3>播放中屏幕常亮</h3><p>观影不熄屏，暂停自动恢复，省电又贴心。</p></div>
+      <div class="feat"><div class="ic">🎨</div><h3>明暗双主题</h3><p>跟随系统自动切换，白天夜晚都舒适。</p></div>
+    </div>
+  </div>
+</section>
+
+<section style="background:var(--card)">
+  <div class="wrap">
+    <h2>应用截图</h2>
+    <p class="sub">深色主题实拍</p>
+    <div class="shots">
+      <img src="screenshots/01-home.jpg" alt="首页">
+      <img src="screenshots/02-detail.jpg" alt="详情·小窗播放">
+      <img class="wide" src="screenshots/03-player.jpg" alt="全屏播放">
+      <img class="wide" src="screenshots/04-live.jpg" alt="直播">
+      <img src="screenshots/05-search.jpg" alt="搜索">
+      <img src="screenshots/06-mine.jpg" alt="我的">
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>三步开始观影</h2>
+    <p class="sub">App 不含任何内容，配置一个 TVBox 接口即可</p>
+    <div class="steps">
+      <div class="step"><h3>下载安装</h3><p>从 GitHub Releases 下载 APK（约 2.5MB），安装到 Android 7.0+ 手机。</p></div>
+      <div class="step"><h3>配置数据源</h3><p>「我的 → 设置与数据源」：从内置推荐接口一键选用，或粘贴你自己的 TVBox 接口地址。</p></div>
+      <div class="step"><h3>开始观看</h3><p>返回首页即自动加载内容。点播进页即播，小窗全屏无缝切换；直播多源自动切换。</p></div>
+    </div>
+  </div>
+</section>
+
+<section style="background:var(--card)">
+  <div class="wrap">
+    <h2>播放器手势</h2>
+    <p class="sub">全屏播放时</p>
+    <table>
+      <tr><th>手势</th><th>功能</th></tr>
+      <tr><td>单击屏幕</td><td>显示 / 隐藏控制栏</td></tr>
+      <tr><td>双击左 / 右半屏</td><td>快退 / 快进 10 秒</td></tr>
+      <tr><td>水平拖动</td><td>拖动进度</td></tr>
+      <tr><td>左半屏上下滑</td><td>调节亮度</td></tr>
+      <tr><td>右半屏上下滑</td><td>调节音量</td></tr>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="disclaimer">
+      <strong>免责声明</strong>：本项目为纯技术学习项目，由 AI 生成代码，仅供学习交流使用。本应用不包含、不存储、不分发任何影视内容，所有内容均来自用户自行配置的第三方公开接口，与本项目无关。请于下载后 24 小时内删除本软件，使用产生的任何法律后果由使用者自行承担。
+    </div>
+    <p>聚影 TVBox 手机版 · 100% AI（KIMI-K3）编写 · <a href="https://github.com/csuhan/tvbox">GitHub</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

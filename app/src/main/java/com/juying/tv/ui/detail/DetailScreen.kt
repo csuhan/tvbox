@@ -38,14 +38,12 @@ import androidx.navigation.NavHostController
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
-import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.juying.tv.data.model.Episode
-import com.juying.tv.data.remote.Http
 import com.juying.tv.player.PlayerActivity
+import com.juying.tv.player.PlayerHolder
 import com.juying.tv.player.WebSniffer
 import com.juying.tv.ui.DetailViewModel
 import com.juying.tv.ui.MainViewModel
@@ -53,6 +51,12 @@ import com.juying.tv.ui.components.ErrorView
 import com.juying.tv.ui.components.LoadingView
 import com.juying.tv.ui.components.SectionHeader
 import com.juying.tv.ui.theme.AppColors
+
+private tailrec fun android.content.Context.findActivity(): android.app.Activity? = when (this) {
+    is android.app.Activity -> this
+    is android.content.ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
 
 /** 芒果风详情页：顶部内嵌播放器(进页即播) + 标签 + 操作行 + 数字选集 */
 @Composable
@@ -62,6 +66,9 @@ fun DetailScreen(nav: NavHostController, vodId: String, mainVm: MainViewModel = 
     val state by vm.state.collectAsState()
     val isFav by vm.isFavorite.collectAsState()
     val context = LocalContext.current
+    // 交接标识：站点 key 会在后台刷新后被重写（mergeConfigs 加命名空间），
+    // 因此小窗/大窗交接改用与站点 key 无关的页面级稳定 ID
+    val handoffId = remember(vodId) { "$vodId@${java.util.UUID.randomUUID()}" }
 
     LaunchedEffect(site?.key, vodId) { vm.load(site, vodId) }
     LifecycleResumeEffect(Unit) {
@@ -72,9 +79,14 @@ fun DetailScreen(nav: NavHostController, vodId: String, mainVm: MainViewModel = 
     fun playFullscreen(sourceIndex: Int, episodeIndex: Int, startPos: Long = 0L) {
         val d = state.detail ?: return
         val src = d.sources.getOrNull(sourceIndex) ?: return
+        // 小窗正在播放本页影片：标记交接，大窗复用同一播放器实例
+        if (PlayerHolder.player != null && PlayerHolder.vodKey == handoffId) {
+            PlayerHolder.handoff = true
+        }
         context.startActivity(
             Intent(context, PlayerActivity::class.java).apply {
                 putExtra(PlayerActivity.EXTRA_SITE_KEY, site?.key ?: "")
+                putExtra(PlayerActivity.EXTRA_HANDOFF_ID, handoffId)
                 putExtra(PlayerActivity.EXTRA_VOD_ID, d.vodId)
                 putExtra(PlayerActivity.EXTRA_TITLE, d.vodName)
                 putExtra(PlayerActivity.EXTRA_PIC, d.vodPic)
@@ -109,6 +121,7 @@ fun DetailScreen(nav: NavHostController, vodId: String, mainVm: MainViewModel = 
                     // ===== 内嵌播放区（16:9）=====
                     EmbeddedPlayer(
                         poster = d.vodPic,
+                        vodKey = handoffId,
                         episodes = d.sources.getOrNull(state.sourceIndex)?.episodes ?: emptyList(),
                         autoPlayIndex = if (resume != null && playingIndex < 0) resume.episodeIndex else 0,
                         startPosition = resume?.position ?: 0L,
@@ -118,7 +131,8 @@ fun DetailScreen(nav: NavHostController, vodId: String, mainVm: MainViewModel = 
                         onFullscreen = {
                             val idx = if (playingIndex >= 0) playingIndex
                             else resume?.episodeIndex ?: 0
-                            playFullscreen(state.sourceIndex, idx, embeddedPosition)
+                            val pos = PlayerHolder.player?.currentPosition ?: embeddedPosition
+                            playFullscreen(state.sourceIndex, idx, pos)
                         },
                         onBack = { nav.popBackStack() },
                     )
@@ -328,6 +342,7 @@ private fun ActionItem(
 @Composable
 private fun EmbeddedPlayer(
     poster: String,
+    vodKey: String,
     episodes: List<Episode>,
     autoPlayIndex: Int,
     startPosition: Long,
@@ -339,6 +354,7 @@ private fun EmbeddedPlayer(
 ) {
     val context = LocalContext.current
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
+    var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
     var buffering by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(false) }
     var isPlaying by remember { mutableStateOf(false) }
@@ -358,28 +374,58 @@ private fun EmbeddedPlayer(
         }
     }
 
-    // 播放切换
+    // 播放切换（复用全局共享播放器，大窗返回时同集不重新加载）
     LaunchedEffect(targetIndex) {
         if (targetIndex < 0) return@LaunchedEffect
         val ep = episodes.getOrNull(targetIndex) ?: return@LaunchedEffect
+        val tag = PlayerHolder.tagOf(vodKey, targetIndex)
+        val p = PlayerHolder.obtain(context, vodKey)
+        player = p
+        if (PlayerHolder.currentTag == tag) {
+            // 同一集已在大窗/小窗 prepare 过：直接续播
+            buffering = p.playbackState == Player.STATE_BUFFERING
+            p.playWhenReady = true
+            return@LaunchedEffect
+        }
         buffering = true
-        val p = player ?: ExoPlayer.Builder(context)
-            .setMediaSourceFactory(
-                DefaultMediaSourceFactory(context)
-                    .setDataSourceFactory(OkHttpDataSource.Factory(Http.mediaClient).setUserAgent(Http.UA))
-            )
-            .build()
-            .also { player = it }
         p.setMediaItem(MediaItem.fromUri(ep.url))
         p.prepare()
         if (startPosition > 0 && targetIndex == autoPlayIndex) p.seekTo(startPosition)
         p.playWhenReady = true
+        PlayerHolder.currentTag = tag
+    }
+
+    // 从大窗返回：若在大窗里切换了集数，同步过来（不会触发重新加载）
+    val latestEpisodes by rememberUpdatedState(episodes)
+    val latestOnIndexChange by rememberUpdatedState(onPlayingIndexChange)
+    val latestPlayingIndex by rememberUpdatedState(playingIndex)
+    LifecycleResumeEffect(vodKey) {
+        val tag = PlayerHolder.currentTag
+        val cur = latestPlayingIndex
+        if (tag != null && PlayerHolder.vodKey == vodKey && cur >= 0) {
+            val idx = tag.substringAfterLast('#').toIntOrNull()
+            if (idx != null && idx != cur && idx in latestEpisodes.indices) {
+                latestOnIndexChange(idx)
+            }
+        }
+        // 大窗接管过视频输出 surface，返回后强制小窗重新附着，否则有声音但画面全黑
+        playerViewRef?.let { v ->
+            player?.let { p ->
+                v.player = null
+                v.player = p
+            }
+        }
+        onPauseOrDispose { }
     }
 
     DisposableEffect(Unit) {
         onDispose {
             player?.let { onPositionChange(it.currentPosition) }
-            player?.release()
+            // 小窗 → 大窗交接中不释放；否则离开详情页释放共享播放器
+            if (!PlayerHolder.handoff) PlayerHolder.release()
+            context.findActivity()?.window?.clearFlags(
+                android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            )
             player = null
         }
     }
@@ -414,29 +460,48 @@ private fun EmbeddedPlayer(
                     PlayerView(ctx).apply {
                         useController = false
                         this.player = player
-                    }
+                    }.also { playerViewRef = it }
                 },
                 update = { it.player = player },
                 modifier = Modifier.fillMaxSize(),
             )
-            // 播放状态监听
-            LaunchedEffect(player) {
-                player?.addListener(object : Player.Listener {
-                    override fun onPlaybackStateChanged(state: Int) {
-                        buffering = state == Player.STATE_BUFFERING
-                        if (state == Player.STATE_ENDED) {
-                            // 自动下一集
-                            val next = targetIndex + 1
-                            if (next < episodes.size && WebSniffer.looksLikeMedia(episodes[next].url)) {
-                                onPlayingIndexChange(next)
+            // 播放状态监听（共享播放器上必须可移除，避免泄漏/叠加；
+            // 共享实例跨集存活，闭包必须用最新值，否则自动连播会跳到过期集数）
+            val latestTarget by rememberUpdatedState(targetIndex)
+            DisposableEffect(player) {
+                val p = player
+                if (p == null) {
+                    onDispose { }
+                } else {
+                    val listener = object : Player.Listener {
+                        override fun onIsPlayingChanged(isPlaying: Boolean) {
+                            // 小窗播放中屏幕常亮，暂停/结束恢复自动息屏
+                            val w = context.findActivity()?.window ?: return
+                            if (isPlaying) w.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                            else w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        }
+
+                        override fun onPlaybackStateChanged(state: Int) {
+                            buffering = state == Player.STATE_BUFFERING
+                            if (state == Player.STATE_ENDED) {
+                                if (PlayerHolder.fullscreenActive) return // 大窗接管中，不干预
+                                // 自动下一集
+                                val next = latestTarget + 1
+                                if (next < latestEpisodes.size && WebSniffer.looksLikeMedia(latestEpisodes[next].url)) {
+                                    latestOnIndexChange(next)
+                                }
+                            }
+                        }
+                        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                            buffering = false
+                            if (!PlayerHolder.fullscreenActive) {
+                                latestOnIndexChange(-1) // 回退到海报，用户可进全屏(带嗅探)
                             }
                         }
                     }
-                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                        buffering = false
-                        onPlayingIndexChange(-1) // 回退到海报，用户可进全屏(带嗅探)
-                    }
-                })
+                    p.addListener(listener)
+                    onDispose { p.removeListener(listener) }
+                }
             }
             // 点击显示/隐藏控制条
             Box(

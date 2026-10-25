@@ -16,11 +16,15 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         vectorDrawables { useSupportLibrary = true }
+        // 只保留中/英文资源，剔除依赖库自带的多国语言
+        resourceConfigurations += setOf("zh", "zh-rCN", "zh-rTW", "en")
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 代码压缩混淆 + 无用资源剔除，显著减小 APK 体积
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug {
