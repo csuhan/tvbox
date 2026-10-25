@@ -27,7 +27,7 @@
 
 ## 📦 下载安装
 
-前往 [**Releases**](https://github.com/csuhan/tvbox/releases) 下载最新 APK（`聚影TV-vX.X.X.apk`），传到手机点击安装即可。
+前往 [**Releases**](https://github.com/csuhan/tvbox/releases) 下载最新 APK（`JuyingTV-vX.X.X.apk`），传到手机点击安装即可。
 
 - 系统要求：Android 7.0（API 24）及以上
 - 安装时如提示"未知来源"，请按系统指引允许本次安装
