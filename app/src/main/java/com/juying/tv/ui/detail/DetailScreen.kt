@@ -15,7 +15,9 @@ import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Fullscreen
+import androidx.compose.material.icons.outlined.PauseCircleOutline
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.PlayCircleOutline
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -338,6 +340,10 @@ private fun EmbeddedPlayer(
     val context = LocalContext.current
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
     var buffering by remember { mutableStateOf(false) }
+    var controlsVisible by remember { mutableStateOf(false) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var positionMs by remember { mutableStateOf(0L) }
+    var durationMs by remember { mutableStateOf(0L) }
 
     // 需要播放的剧集
     val targetIndex = if (playingIndex >= 0) playingIndex else -1
@@ -385,6 +391,24 @@ private fun EmbeddedPlayer(
             .background(Color.Black),
     ) {
         if (targetIndex >= 0 && player != null) {
+            // 进度轮询（驱动控制条）
+            LaunchedEffect(player) {
+                while (true) {
+                    kotlinx.coroutines.delay(500)
+                    player?.let {
+                        isPlaying = it.isPlaying
+                        positionMs = it.currentPosition
+                        durationMs = if (it.duration > 0) it.duration else 0L
+                    }
+                }
+            }
+            // 控制条自动隐藏
+            LaunchedEffect(controlsVisible) {
+                if (controlsVisible) {
+                    kotlinx.coroutines.delay(3000)
+                    controlsVisible = false
+                }
+            }
             AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
@@ -414,14 +438,74 @@ private fun EmbeddedPlayer(
                     }
                 })
             }
-            // 点击暂停/播放
+            // 点击显示/隐藏控制条
             Box(
                 Modifier
                     .fillMaxSize()
-                    .clickable {
-                        player?.let { if (it.isPlaying) it.pause() else it.play() }
-                    },
+                    .clickable { controlsVisible = !controlsVisible },
             )
+            // 底部控制条：播放/暂停 + 进度 + 时间 + 全屏
+            if (controlsVisible) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, Color(0xB3000000))
+                            )
+                        )
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = {
+                        player?.let { if (it.isPlaying) it.pause() else it.play() }
+                    }, modifier = Modifier.size(34.dp)) {
+                        Icon(
+                            if (isPlaying) Icons.Outlined.PauseCircleOutline
+                            else Icons.Outlined.PlayCircleOutline,
+                            contentDescription = if (isPlaying) "暂停" else "播放",
+                            tint = Color.White,
+                            modifier = Modifier.size(26.dp),
+                        )
+                    }
+                    Text(
+                        formatMs(positionMs),
+                        color = Color.White,
+                        fontSize = 11.sp,
+                    )
+                    Slider(
+                        value = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
+                        onValueChange = { v ->
+                            val target = (v * durationMs).toLong()
+                            player?.seekTo(target)
+                            positionMs = target
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 6.dp)
+                            .height(20.dp),
+                        colors = SliderDefaults.colors(
+                            thumbColor = AppColors.accent,
+                            activeTrackColor = AppColors.accent,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.35f),
+                        ),
+                    )
+                    Text(
+                        formatMs(durationMs),
+                        color = Color.White,
+                        fontSize = 11.sp,
+                    )
+                    IconButton(onClick = onFullscreen, modifier = Modifier.size(34.dp)) {
+                        Icon(
+                            Icons.Outlined.Fullscreen,
+                            contentDescription = "全屏",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+            }
             if (buffering) {
                 CircularProgressIndicator(
                     color = AppColors.accent,
@@ -476,16 +560,27 @@ private fun EmbeddedPlayer(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = Color.White)
             }
         }
-        // 右下全屏
-        IconButton(
-            onClick = onFullscreen,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(6.dp),
-        ) {
-            Icon(Icons.Outlined.Fullscreen, "全屏", tint = Color.White)
+        // 非播放状态：右下全屏入口
+        if (targetIndex < 0) {
+            IconButton(
+                onClick = onFullscreen,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp),
+            ) {
+                Icon(Icons.Outlined.Fullscreen, "全屏", tint = Color.White)
+            }
         }
     }
+}
+
+private fun formatMs(ms: Long): String {
+    if (ms <= 0) return "00:00"
+    val s = ms / 1000
+    val h = s / 3600
+    val m = (s % 3600) / 60
+    val sec = s % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec)
 }
 
 /** 芒果风数字选集格：6 列，正在播放橙色标记 */
