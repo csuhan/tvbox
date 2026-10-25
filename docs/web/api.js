@@ -75,35 +75,49 @@ async function fetchOnce(u, timeoutMs = 15000, responseType = 'text') {
   } finally { clearTimeout(t); }
 }
 
-/** 依次尝试：直连（可选）→ 各代理。返回 {data, via} */
-async function fetchSmart(url, { responseType = 'text', timeoutMs = 15000, direct = true } = {}) {
-  if (direct && !mustProxy(url)) {
-    try { return { data: await fetchOnce(url, timeoutMs, responseType), via: -1 }; } catch {}
+function validate(data, responseType) {
+  if (responseType !== 'text') return true;
+  const t = (data || '').trim();
+  if (!t) return false;
+  // 代理自身的错误页不算成功
+  if (/^error code: ?\d+/i.test(t)) return false;
+  if (t.startsWith('Oops')) return false;
+  if (t.startsWith('{') && t.includes('corsfix_error')) return false;
+  return true;
+}
+
+async function tryVia(url, via, responseType, timeoutMs) {
+  const u = via === -1 ? url : (via === -2 ? proxyWrap(store.proxy, url) : PROXIES[via].build(url));
+  const data = await fetchOnce(u, timeoutMs, responseType);
+  if (!validate(data, responseType)) throw new Error('bad content');
+  return { data, via };
+}
+
+/**
+ * 抓取（文本/二进制）：
+ * 1. 有缓存的可用代理：直连 + 该代理快速双发
+ * 2. 否则：直连 + 全部代理 + 自定义代理 竞速，第一个成功的生效并缓存
+ */
+async function fetchSmart(url, { responseType = 'text', timeoutMs = 25000, direct = true } = {}) {
+  const racers = [];
+  if (direct && !mustProxy(url)) racers.push(-1);
+  if (store.goodProxy !== '' && PROXIES[store.goodProxy]) {
+    racers.push(store.goodProxy);
+  } else {
+    for (let i = 0; i < PROXIES.length; i++) racers.push(i);
+    if (store.proxy) racers.push(-2);
   }
-  const order = [];
-  if (store.goodProxy !== '') order.push(store.goodProxy);
-  for (let i = 0; i < PROXIES.length; i++) if (!order.includes(i)) order.push(i);
-  let lastErr = null;
-  for (const i of order) {
-    try {
-      const data = await fetchOnce(PROXIES[i].build(url), Math.max(timeoutMs, 20000), responseType);
-      if (responseType === 'text') {
-        const t = (data || '').trim();
-        // 代理自身的错误页不算成功，继续尝试下一个
-        if (!t || /^error code: ?\d+/i.test(t) || t.startsWith('Oops') || t.startsWith('<!DOCTYPE') && t.length < 2000) {
-          throw new Error('proxy error page');
-        }
-      }
-      if (store.goodProxy !== i) store.goodProxy = i;
-      return { data, via: i };
-    } catch (e) { lastErr = e; }
+  if (!racers.length) throw new Error('无可用请求通道');
+  try {
+    const res = await Promise.any(racers.map(v => tryVia(url, v, responseType, timeoutMs)));
+    if (res.via >= 0 && store.goodProxy !== res.via) store.goodProxy = res.via;
+    return res;
+  } catch (e) {
+    // 全部失败：清掉缓存代理，下次重新竞速
+    store.goodProxy = '';
+    const errs = (e && e.errors) ? e.errors.map(x => x.message).join('; ') : String(e);
+    throw new Error('网络请求失败（可尝试在设置中配置自建代理）');
   }
-  // 用户自定义代理兜底
-  if (store.proxy) {
-    const data = await fetchOnce(proxyWrap(store.proxy, url), timeoutMs + 5000, responseType);
-    return { data, via: -2 };
-  }
-  throw lastErr || new Error('所有代理均失败');
 }
 
 /** 抓取文本（自动代理链） */
