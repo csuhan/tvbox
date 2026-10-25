@@ -39,10 +39,19 @@ export const RECOMMENDED = [
 
 // ---------------- CORS 代理链 ----------------
 const PROXIES = [
-  { name: 'allorigins', build: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u) },
-  { name: 'corsfix', build: u => 'https://proxy.corsfix.com/?' + u },
-  { name: 'codetabs', build: u => 'https://api.codetabs.com/v1/proxy?quest=' + u },
-  { name: 'cors-eu', build: u => 'https://cors.eu.org/' + u },
+  // r.jina.ai：国内可达且快（~2s），但只返回文本（带 Markdown 前缀需剥离）
+  {
+    name: 'jina', binary: false,
+    build: u => 'https://r.jina.ai/' + u,
+    unwrap: t => {
+      const i = t.indexOf('Markdown Content:');
+      return i >= 0 ? t.slice(i + 17).replace(/^\s+/, '') : t;
+    },
+  },
+  { name: 'allorigins', binary: true, build: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u) },
+  { name: 'corsfix', binary: true, build: u => 'https://proxy.corsfix.com/?' + u },
+  { name: 'codetabs', binary: true, build: u => 'https://api.codetabs.com/v1/proxy?quest=' + u },
+  { name: 'cors-eu', binary: true, build: u => 'https://cors.eu.org/' + u },
 ];
 
 function proxyWrap(proxyPrefix, url) {
@@ -88,8 +97,9 @@ function validate(data, responseType) {
 
 async function tryVia(url, via, responseType, timeoutMs) {
   const u = via === -1 ? url : (via === -2 ? proxyWrap(store.proxy, url) : PROXIES[via].build(url));
-  const data = await fetchOnce(u, timeoutMs, responseType);
+  let data = await fetchOnce(u, timeoutMs, responseType);
   if (!validate(data, responseType)) throw new Error('bad content');
+  if (via >= 0 && PROXIES[via].unwrap && responseType === 'text') data = PROXIES[via].unwrap(data);
   return { data, via };
 }
 
@@ -98,13 +108,15 @@ async function tryVia(url, via, responseType, timeoutMs) {
  * 1. 有缓存的可用代理：直连 + 该代理快速双发
  * 2. 否则：直连 + 全部代理 + 自定义代理 竞速，第一个成功的生效并缓存
  */
-async function fetchSmart(url, { responseType = 'text', timeoutMs = 25000, direct = true } = {}) {
+async function fetchSmart(url, { responseType = 'text', timeoutMs = 30000, direct = true } = {}) {
+  const needBin = responseType === 'arraybuffer';
+  const cap = i => PROXIES[i] && (!needBin || PROXIES[i].binary);
   const racers = [];
   if (direct && !mustProxy(url)) racers.push(-1);
-  if (store.goodProxy !== '' && PROXIES[store.goodProxy]) {
+  if (store.goodProxy !== '' && cap(store.goodProxy)) {
     racers.push(store.goodProxy);
   } else {
-    for (let i = 0; i < PROXIES.length; i++) racers.push(i);
+    for (let i = 0; i < PROXIES.length; i++) if (cap(i)) racers.push(i);
     if (store.proxy) racers.push(-2);
   }
   if (!racers.length) throw new Error('无可用请求通道');
