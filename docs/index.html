@@ -3,184 +3,542 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>聚影 TVBox 手机版 — 纯粹观影，无广告免登录</title>
-<meta name="description" content="聚影：100% AI(KIMI-K3) 编写的 Android 影视聚合播放器。无广告、无需注册登录，小窗大窗无缝续播，APK 仅 2.5MB。">
+<title>聚影 — 纯粹观影，本该如此简单</title>
+<meta name="description" content="聚影：100% AI(KIMI-K3) 编写的 Android 影视聚合播放器。无广告、免注册登录，APK 仅 2.5MB。">
 <style>
-  :root {
-    --accent: #FF8A00;
-    --accent-dark: #E67600;
-    --bg: #101114;
-    --card: #1A1C20;
-    --card2: #22252B;
-    --text: #E8E9EB;
-    --text2: #9BA0A8;
-    --divider: #2C2E33;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: -apple-system, "PingFang SC", "HarmonicOS Sans SC", "Microsoft YaHei", sans-serif;
-    background: var(--bg); color: var(--text); line-height: 1.7;
-  }
-  a { color: var(--accent); text-decoration: none; }
-  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+:root{
+  --bg:#0B0C0F; --bg2:#101216; --card:#15181D; --card2:#1B1F26;
+  --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.12);
+  --text:#ECEDEF; --text2:#9BA0A8; --text3:#6B7078;
+  --accent:#FF8A00; --accent2:#FFB347; --accent-dim:rgba(255,138,0,.12);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--text);line-height:1.7;overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+::selection{background:rgba(255,138,0,.3)}
 
-  /* Hero */
-  .hero {
-    text-align: center; padding: 90px 20px 70px;
-    background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(255,138,0,.18), transparent 70%);
-  }
-  .logo {
-    width: 88px; height: 88px; margin: 0 auto 22px; border-radius: 22px;
-    background: linear-gradient(135deg, var(--accent), var(--accent-dark));
-    display: flex; align-items: center; justify-content: center;
-    font-size: 44px; box-shadow: 0 12px 40px rgba(255,138,0,.35);
-  }
-  .hero h1 { font-size: 44px; letter-spacing: 2px; }
-  .hero h1 span { color: var(--accent); }
-  .tagline { color: var(--text2); font-size: 17px; margin: 14px auto 8px; max-width: 620px; }
-  .badges { margin: 18px 0 30px; }
-  .badge {
-    display: inline-block; padding: 5px 14px; margin: 4px; border-radius: 999px;
-    background: var(--card2); color: var(--text); font-size: 13px; border: 1px solid var(--divider);
-  }
-  .badge.ai { background: rgba(255,138,0,.14); border-color: rgba(255,138,0,.4); color: var(--accent); font-weight: 600; }
-  .btn {
-    display: inline-block; padding: 14px 38px; border-radius: 12px; font-size: 17px; font-weight: 600;
-    background: linear-gradient(135deg, var(--accent), var(--accent-dark)); color: #fff;
-    box-shadow: 0 8px 28px rgba(255,138,0,.35); transition: transform .15s;
-  }
-  .btn:hover { transform: translateY(-2px); }
-  .btn.ghost {
-    background: transparent; border: 1px solid var(--divider); color: var(--text);
-    box-shadow: none; margin-left: 12px;
-  }
-  .ver { color: var(--text2); font-size: 13px; margin-top: 14px; }
+/* ---------- 滚动显现 ---------- */
+.rv{opacity:0;transform:translateY(28px);transition:opacity .7s cubic-bezier(.2,.6,.2,1),transform .7s cubic-bezier(.2,.6,.2,1)}
+.rv.in{opacity:1;transform:none}
+.rv-d1{transition-delay:.08s}.rv-d2{transition-delay:.16s}.rv-d3{transition-delay:.24s}.rv-d4{transition-delay:.32s}
 
-  section { padding: 64px 0; }
-  h2 { text-align: center; font-size: 30px; margin-bottom: 8px; }
-  .sub { text-align: center; color: var(--text2); margin-bottom: 40px; }
+/* ---------- 导航 ---------- */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  transition:background .3s,border-color .3s,backdrop-filter .3s;
+  border-bottom:1px solid transparent;
+}
+nav.scrolled{background:rgba(11,12,15,.72);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom-color:var(--line)}
+.nav-in{max-width:1120px;margin:0 auto;padding:0 24px;height:64px;display:flex;align-items:center;gap:28px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:.5px}
+.logo-mark{
+  width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--accent),#E67600);font-size:14px;color:#fff;
+  box-shadow:0 4px 14px rgba(255,138,0,.4);
+}
+.nav-links{display:flex;gap:26px;margin-left:auto;font-size:14px;color:var(--text2)}
+.nav-links a{transition:color .2s;position:relative}
+.nav-links a:hover{color:var(--text)}
+.nav-cta{
+  padding:8px 18px;border-radius:7px;font-size:13.5px;font-weight:600;
+  background:var(--card2);border:1px solid var(--line2);transition:all .2s;
+  display:flex;align-items:center;gap:7px;
+}
+.nav-cta:hover{border-color:var(--accent);color:var(--accent)}
+@media(max-width:720px){.nav-links{display:none}}
 
-  /* Features */
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
-  .feat {
-    background: var(--card); border: 1px solid var(--divider); border-radius: 16px; padding: 26px;
-  }
-  .feat .ic { font-size: 30px; margin-bottom: 12px; }
-  .feat h3 { font-size: 17px; margin-bottom: 6px; }
-  .feat p { color: var(--text2); font-size: 14px; }
+/* ---------- Hero ---------- */
+.hero{position:relative;padding:170px 0 100px;overflow:hidden}
+.hero-bg{position:absolute;inset:0;pointer-events:none}
+.orb{position:absolute;border-radius:50%;filter:blur(90px);opacity:.5;animation:drift 14s ease-in-out infinite alternate}
+.orb1{width:560px;height:560px;background:radial-gradient(circle,rgba(255,138,0,.28),transparent 65%);top:-180px;left:-120px}
+.orb2{width:480px;height:480px;background:radial-gradient(circle,rgba(255,90,0,.16),transparent 65%);top:10%;right:-140px;animation-delay:-5s}
+.orb3{width:420px;height:420px;background:radial-gradient(circle,rgba(120,80,255,.12),transparent 65%);bottom:-160px;left:36%;animation-delay:-9s}
+@keyframes drift{from{transform:translate(0,0) scale(1)}to{transform:translate(40px,30px) scale(1.08)}}
+.grid-bg{
+  position:absolute;inset:0;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:56px 56px;
+  mask-image:radial-gradient(ellipse 70% 60% at 50% 30%,#000 20%,transparent 75%);
+  -webkit-mask-image:radial-gradient(ellipse 70% 60% at 50% 30%,#000 20%,transparent 75%);
+}
+.hero-in{position:relative;display:grid;grid-template-columns:1.15fr .85fr;gap:60px;align-items:center}
+@media(max-width:900px){.hero-in{grid-template-columns:1fr;text-align:center}.hero-visual{margin:40px auto 0}}
+.pill{
+  display:inline-flex;align-items:center;gap:8px;padding:7px 16px;border-radius:999px;
+  background:var(--accent-dim);border:1px solid rgba(255,138,0,.35);color:var(--accent2);
+  font-size:13px;font-weight:600;letter-spacing:.3px;
+}
+.pill .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+.hero h1{
+  font-size:clamp(40px,6vw,64px);line-height:1.14;letter-spacing:-1px;font-weight:800;
+  margin:26px 0 20px;
+}
+.grad-text{
+  background:linear-gradient(120deg,var(--accent) 10%,var(--accent2) 50%,#FFD9A0 90%);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+}
+.hero .sub{color:var(--text2);font-size:17px;max-width:480px;margin-bottom:36px}
+@media(max-width:900px){.hero .sub{margin-left:auto;margin-right:auto}}
+.cta-row{display:flex;gap:14px;flex-wrap:wrap}
+@media(max-width:900px){.cta-row{justify-content:center}}
+.btn{
+  display:inline-flex;align-items:center;gap:9px;padding:15px 32px;border-radius:8px;
+  font-size:16px;font-weight:700;transition:transform .18s,box-shadow .18s;cursor:pointer;border:none;
+}
+.btn-p{
+  background:linear-gradient(135deg,var(--accent),#F07B00);color:#fff;
+  box-shadow:0 10px 32px rgba(255,138,0,.35),inset 0 1px 0 rgba(255,255,255,.25);
+}
+.btn-p:hover{transform:translateY(-2px);box-shadow:0 16px 44px rgba(255,138,0,.45)}
+.btn-g{background:var(--card2);border:1px solid var(--line2);color:var(--text)}
+.btn-g:hover{border-color:var(--accent);transform:translateY(-2px)}
+.hero-stats{display:flex;gap:36px;margin-top:52px;flex-wrap:wrap}
+@media(max-width:900px){.hero-stats{justify-content:center}}
+.stat b{display:block;font-size:26px;font-weight:800;letter-spacing:-.5px}
+.stat b em{font-style:normal;color:var(--accent)}
+.stat span{color:var(--text3);font-size:12.5px}
 
-  /* Screenshots */
-  .shots { display: flex; gap: 16px; overflow-x: auto; padding: 10px 4px 24px; scroll-snap-type: x mandatory; }
-  .shots img {
-    height: 420px; border-radius: 18px; border: 1px solid var(--divider);
-    scroll-snap-align: center; flex: 0 0 auto; background: var(--card);
-  }
-  .shots img.wide { height: 300px; align-self: center; }
-  .shots::-webkit-scrollbar { height: 6px; }
-  .shots::-webkit-scrollbar-thumb { background: var(--divider); border-radius: 3px; }
+/* 手机模型 */
+.hero-visual{position:relative;display:flex;justify-content:center;perspective:1200px}
+.phone{
+  position:relative;width:270px;border-radius:34px;padding:12px;
+  background:linear-gradient(160deg,#2A2E36,#14161B 60%);
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow:0 40px 90px rgba(0,0,0,.6),0 0 0 1px rgba(0,0,0,.6),0 0 80px rgba(255,138,0,.08);
+  transition:transform .25s ease-out;transform-style:preserve-3d;will-change:transform;
+}
+.phone::before{ /* 侧边按键 */
+  content:"";position:absolute;right:-2.5px;top:120px;width:3px;height:64px;border-radius:2px;background:#3A3F48;
+}
+.phone-notch{
+  position:absolute;top:22px;left:50%;transform:translateX(-50%);
+  width:88px;height:22px;border-radius:8px;background:#0B0C0F;z-index:3;
+  border:1px solid rgba(255,255,255,.06);
+}
+.phone-screen{border-radius:26px;overflow:hidden;display:block;width:100%;aspect-ratio:9/19.5;object-fit:cover;background:#000}
+.chip{
+  position:absolute;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;
+  background:rgba(21,24,29,.85);border:1px solid var(--line2);backdrop-filter:blur(10px);
+  box-shadow:0 12px 32px rgba(0,0,0,.45);white-space:nowrap;z-index:4;
+  animation:float 5s ease-in-out infinite;
+}
+.chip b{color:var(--accent)}
+.chip1{top:16%;left:-14%;animation-delay:-1s}
+.chip2{top:44%;right:-16%;animation-delay:-2.6s}
+.chip3{bottom:14%;left:-10%;animation-delay:-4s}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+@media(max-width:900px){.chip1{left:-4%}.chip2{right:-4%}.chip3{left:0}}
 
-  /* Steps */
-  .steps { counter-reset: step; max-width: 720px; margin: 0 auto; }
-  .step {
-    position: relative; padding: 22px 22px 22px 74px; background: var(--card);
-    border: 1px solid var(--divider); border-radius: 14px; margin-bottom: 14px;
-  }
-  .step::before {
-    counter-increment: step; content: counter(step);
-    position: absolute; left: 20px; top: 20px; width: 36px; height: 36px;
-    border-radius: 50%; background: rgba(255,138,0,.15); color: var(--accent);
-    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 17px;
-  }
-  .step h3 { font-size: 16px; }
-  .step p { color: var(--text2); font-size: 14px; }
+/* ---------- 跑马灯 ---------- */
+.marquee{
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  padding:18px 0;overflow:hidden;position:relative;
+  mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);
+}
+.mq-track{display:flex;gap:44px;width:max-content;animation:mq 26s linear infinite}
+.marquee:hover .mq-track{animation-play-state:paused}
+.mq-track span{color:var(--text3);font-size:14px;letter-spacing:2px;white-space:nowrap;display:flex;align-items:center;gap:44px}
+.mq-track i{color:var(--accent);font-style:normal;font-size:10px}
+@keyframes mq{to{transform:translateX(-50%)}}
 
-  /* Gestures table */
-  table { width: 100%; max-width: 640px; margin: 0 auto; border-collapse: collapse; }
-  th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--divider); font-size: 14px; }
-  th { color: var(--accent); }
-  td:first-child { color: var(--text2); white-space: nowrap; }
+/* ---------- 通用 section ---------- */
+section{padding:110px 0;position:relative}
+.sec-head{text-align:center;max-width:640px;margin:0 auto 64px}
+.sec-tag{
+  display:inline-block;padding:5px 14px;border-radius:999px;font-size:12.5px;font-weight:600;
+  letter-spacing:1.5px;color:var(--accent);background:var(--accent-dim);margin-bottom:18px;
+}
+.sec-head h2{font-size:clamp(28px,4vw,40px);letter-spacing:-.8px;font-weight:800}
+.sec-head p{color:var(--text2);margin-top:12px}
+</style>
+<style>
+/* ---------- Bento 特性 ---------- */
+.bento{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+@media(max-width:900px){.bento{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.bento{grid-template-columns:1fr}}
+.bcard{
+  position:relative;background:var(--card);border:1px solid var(--line);border-radius:8px;
+  padding:28px;overflow:hidden;transition:border-color .3s,transform .3s;
+}
+.bcard:hover{border-color:rgba(255,138,0,.35);transform:translateY(-3px)}
+.bcard::before{ /* 鼠标聚光 */
+  content:"";position:absolute;inset:0;opacity:0;transition:opacity .3s;pointer-events:none;
+  background:radial-gradient(480px circle at var(--mx,50%) var(--my,50%),rgba(255,138,0,.09),transparent 45%);
+}
+.bcard:hover::before{opacity:1}
+.b-lg{grid-column:span 2;grid-row:span 1}
+.b-ic{
+  width:44px;height:44px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  font-size:21px;background:var(--card2);border:1px solid var(--line2);margin-bottom:18px;
+}
+.bcard h3{font-size:16.5px;margin-bottom:7px;font-weight:700}
+.bcard p{color:var(--text2);font-size:13.5px;line-height:1.65}
+.code-deco{
+  margin-top:20px;background:#0D0F13;border:1px solid var(--line);border-radius:8px;
+  padding:14px 16px;font-family:"SF Mono",Menlo,monospace;font-size:12px;line-height:1.8;overflow:hidden;
+}
+.code-deco .c1{color:#7D8590}.code-deco .c2{color:#FF8A00}.code-deco .c3{color:#A5D6FF}.code-deco .c4{color:#7EE787}
+/* 体积对比条 */
+.sizeviz{margin-top:20px}
+.sizebar{display:flex;align-items:center;gap:12px;margin-bottom:10px;font-size:12.5px;color:var(--text2)}
+.sizebar .lbl{width:64px;flex:none}
+.sizebar .track{flex:1;height:10px;border-radius:6px;background:var(--card2);overflow:hidden}
+.sizebar .fill{height:100%;border-radius:6px;width:0;transition:width 1.2s cubic-bezier(.2,.6,.2,1) .2s}
+.fill.old{background:linear-gradient(90deg,#4A4F58,#6B7078)}
+.fill.new{background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.sizebar b{width:56px;text-align:right;flex:none}
+/* 主题切换小演示 */
+.theme-demo{
+  margin-top:18px;border-radius:8px;border:1px solid var(--line);padding:14px;
+  transition:background .4s,color .4s;cursor:pointer;user-select:none;
+}
+.theme-demo .td-bar{height:8px;border-radius:4px;margin-bottom:8px;transition:background .4s}
+.theme-demo .td-bar.short{width:55%}
+.theme-demo .td-tag{font-size:11.5px;opacity:.65;margin-top:6px;display:block}
 
-  footer {
-    border-top: 1px solid var(--divider); padding: 36px 0 50px; text-align: center;
-    color: var(--text2); font-size: 13px;
-  }
-  .disclaimer { max-width: 680px; margin: 0 auto 18px; text-align: left; }
+/* ---------- 截图轮播 ---------- */
+.shot-sec{background:var(--bg2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.carousel{position:relative}
+.car-track{
+  display:flex;gap:22px;overflow-x:auto;scroll-snap-type:x mandatory;padding:10px 4px 26px;
+  scrollbar-width:none;-ms-overflow-style:none;
+}
+.car-track::-webkit-scrollbar{display:none}
+.shot{
+  flex:0 0 auto;scroll-snap-align:center;border-radius:10px;overflow:hidden;
+  border:1px solid var(--line2);background:#000;position:relative;
+  box-shadow:0 20px 50px rgba(0,0,0,.5);transition:transform .3s,border-color .3s;
+}
+.shot:hover{transform:translateY(-6px);border-color:rgba(255,138,0,.4)}
+.shot img{display:block;height:460px;width:auto}
+.shot.wide img{height:340px}
+.shot .cap{
+  position:absolute;left:0;right:0;bottom:0;padding:26px 16px 12px;font-size:12.5px;color:#fff;
+  background:linear-gradient(transparent,rgba(0,0,0,.75));text-align:center;letter-spacing:1px;
+}
+.car-btn{
+  position:absolute;top:42%;width:46px;height:46px;border-radius:50%;z-index:5;
+  background:rgba(21,24,29,.9);border:1px solid var(--line2);color:var(--text);font-size:18px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;
+  backdrop-filter:blur(8px);
+}
+.car-btn:hover{border-color:var(--accent);color:var(--accent);transform:scale(1.08)}
+.car-prev{left:-8px}.car-next{right:-8px}
+.car-dots{display:flex;gap:8px;justify-content:center;margin-top:4px}
+.car-dots i{width:7px;height:7px;border-radius:50%;background:var(--card2);border:1px solid var(--line2);cursor:pointer;transition:all .25s}
+.car-dots i.on{background:var(--accent);border-color:var(--accent);transform:scale(1.25)}
+
+/* ---------- 步骤时间线 ---------- */
+.steps{max-width:680px;margin:0 auto;position:relative;padding-left:34px}
+.steps::before{
+  content:"";position:absolute;left:11px;top:14px;bottom:14px;width:2px;
+  background:linear-gradient(var(--accent),rgba(255,138,0,.05));
+}
+.step{position:relative;padding:0 0 40px 30px}
+.step:last-child{padding-bottom:0}
+.step .n{
+  position:absolute;left:-34px;top:0;width:24px;height:24px;border-radius:50%;
+  background:var(--bg);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:800;color:var(--accent);
+}
+.step h3{font-size:17px;margin-bottom:5px}
+.step p{color:var(--text2);font-size:14px}
+.step code{
+  background:var(--card2);border:1px solid var(--line2);border-radius:6px;
+  padding:1.5px 8px;font-size:12.5px;color:var(--accent2);font-family:"SF Mono",Menlo,monospace;
+}
+
+/* ---------- 手势 ---------- */
+.gestures{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;max-width:900px;margin:0 auto}
+.gest{
+  display:flex;align-items:center;gap:16px;background:var(--card);border:1px solid var(--line);
+  border-radius:10px;padding:18px 20px;transition:all .25s;
+}
+.gest:hover{border-color:rgba(255,138,0,.35);transform:translateY(-2px)}
+.gest .gi{
+  width:42px;height:42px;flex:none;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  background:var(--accent-dim);font-size:19px;
+}
+.gest b{display:block;font-size:14px}
+.gest span{color:var(--text3);font-size:12.5px}
+
+/* ---------- FAQ ---------- */
+.faq{max-width:720px;margin:0 auto}
+.faq details{
+  background:var(--card);border:1px solid var(--line);border-radius:10px;margin-bottom:12px;
+  overflow:hidden;transition:border-color .25s;
+}
+.faq details[open]{border-color:rgba(255,138,0,.35)}
+.faq summary{
+  list-style:none;cursor:pointer;padding:19px 22px;font-weight:600;font-size:15px;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary .arr{transition:transform .3s;color:var(--accent);font-size:13px;flex:none}
+.faq details[open] summary .arr{transform:rotate(180deg)}
+.faq .fa-body{padding:0 22px 20px;color:var(--text2);font-size:14px}
+
+/* ---------- CTA ---------- */
+.cta-banner{
+  position:relative;text-align:center;border-radius:14px;padding:80px 30px;overflow:hidden;
+  background:linear-gradient(160deg,#1C1305,#12100C 55%);
+  border:1px solid rgba(255,138,0,.25);
+}
+.cta-banner::before{
+  content:"";position:absolute;width:600px;height:600px;border-radius:50%;top:-380px;left:50%;
+  transform:translateX(-50%);background:radial-gradient(circle,rgba(255,138,0,.22),transparent 65%);
+  filter:blur(50px);pointer-events:none;
+}
+.cta-banner h2{font-size:clamp(28px,4vw,42px);letter-spacing:-.8px;margin-bottom:14px;position:relative}
+.cta-banner p{color:var(--text2);margin-bottom:34px;position:relative}
+
+/* ---------- 页脚 ---------- */
+footer{border-top:1px solid var(--line);padding:44px 0 56px;color:var(--text3);font-size:13px}
+.foot-grid{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap;margin-bottom:28px}
+.foot-grid a{color:var(--text2);transition:color .2s}
+.foot-grid a:hover{color:var(--accent)}
+.disclaimer{
+  background:var(--card);border:1px solid var(--line);border-radius:8px;
+  padding:16px 20px;font-size:12.5px;line-height:1.8;max-width:820px;margin:0 auto 24px;
+}
+.foot-bottom{text-align:center}
+svg.ic{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.b-ic{color:var(--accent)}
+.gi{color:var(--accent)}
+.chip{display:flex;align-items:center;gap:8px}
+.chip svg.ic{width:15px;height:15px;color:var(--accent)}
+.btn svg.ic{width:17px;height:17px}
 </style>
 </head>
 <body>
 
-<header class="hero">
-  <div class="logo">▶</div>
-  <h1>聚影 <span>TVBox</span> 手机版</h1>
-  <p class="tagline">无广告、无需注册登录，只有最纯粹的视频观看体验</p>
-  <div class="badges">
-    <span class="badge ai">🤖 100% AI（KIMI-K3）编写</span>
-    <span class="badge">🚫 无广告</span>
-    <span class="badge">🔓 免注册免登录</span>
-    <span class="badge">📦 APK 仅 2.5MB</span>
-    <span class="badge">🤖 Android 7.0+</span>
+<nav id="nav">
+  <div class="nav-in">
+    <a class="logo" href="#top"><span class="logo-mark">▶</span>聚影</a>
+    <div class="nav-links">
+      <a href="#features">特性</a>
+      <a href="#shots">截图</a>
+      <a href="#guide">使用</a>
+      <a href="#faq">FAQ</a>
+    </div>
+    <a class="nav-cta" href="https://github.com/csuhan/tvbox" target="_blank" rel="noopener">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
   </div>
-  <div>
-    <a class="btn" href="https://github.com/csuhan/tvbox/releases/latest">⬇ 下载 APK</a>
-    <a class="btn ghost" href="https://github.com/csuhan/tvbox">GitHub 仓库</a>
+</nav>
+
+<header class="hero" id="top">
+  <div class="hero-bg">
+    <div class="orb orb1"></div><div class="orb orb2"></div><div class="orb orb3"></div>
+    <div class="grid-bg"></div>
   </div>
-  <p class="ver">v1.0.0 · 仅请求网络权限 · 明暗双主题</p>
+  <div class="wrap hero-in">
+    <div>
+      <span class="pill rv in"><span class="dot"></span>100% AI（KIMI-K3）编写</span>
+      <h1 class="rv in rv-d1">纯粹观影，<br><span class="grad-text">本该如此简单。</span></h1>
+      <p class="sub rv in rv-d2">聚影 · TVBox 手机版 —— 无广告、免注册登录的 Android 影视聚合播放器。配置一个接口，点播直播随心看。</p>
+      <div class="cta-row rv in rv-d3">
+        <a class="btn btn-p" href="https://github.com/csuhan/tvbox/releases/latest" target="_blank" rel="noopener"><svg class="ic" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>下载 APK</a>
+        <a class="btn btn-g" href="#shots">查看截图</a>
+      </div>
+      <div class="hero-stats rv in rv-d4">
+        <div class="stat"><b><em>2.5</em>MB</b><span>APK 体积</span></div>
+        <div class="stat"><b><em>0</em></b><span>广告与账号</span></div>
+        <div class="stat"><b><em>100%</em></b><span>AI 编写代码</span></div>
+        <div class="stat"><b><em>7.0+</em></b><span>Android 版本</span></div>
+      </div>
+    </div>
+    <div class="hero-visual rv in rv-d2">
+      <div class="phone" id="phoneTilt">
+        <div class="phone-notch"></div>
+        <img class="phone-screen" src="screenshots/01-home.jpg" alt="聚影首页">
+      </div>
+      <div class="chip chip1"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="5.6" y1="5.6" x2="18.4" y2="18.4"/></svg><b>无广告</b> 零打扰</div>
+      <div class="chip chip2"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>仅 <b>2.5MB</b></div>
+      <div class="chip chip3"><svg class="ic" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.8-1.3"/></svg><b>免注册</b> 免登录</div>
+    </div>
+  </div>
 </header>
 
-<section>
+<div class="marquee">
+  <div class="mq-track" id="mqTrack">
+    <span>无广告 <i>◆</i> 免注册登录 <i>◆</i> 网页嗅探 <i>◆</i> 点播 + 直播 <i>◆</i> 明暗双主题 <i>◆</i> 手势操控 <i>◆</i> 历史续播 <i>◆</i> 仅 2.5MB <i>◆</i></span>
+  </div>
+</div>
+
+<section id="features">
   <div class="wrap">
-    <h2>为什么选择聚影</h2>
-    <p class="sub">把复杂留给 AI，把纯粹留给观影</p>
-    <div class="grid">
-      <div class="feat"><div class="ic">🤖</div><h3>纯 AI 打造</h3><p>从架构到每一行代码，100% 由 AI（KIMI-K3）编写完成，是 AI 工程能力的完整展示。</p></div>
-      <div class="feat"><div class="ic">🚫</div><h3>零打扰</h3><p>无广告、无弹窗、无账号体系、无埋点统计。打开就看，看完就走。</p></div>
-      <div class="feat"><div class="ic">🪶</div><h3>极致小巧</h3><p>R8 全量压缩，Release APK 仅约 2.5MB，秒下载秒安装。</p></div>
-      <div class="feat"><div class="ic">🔍</div><h3>网页嗅探</h3><p>非直连播放页自动在后台嗅探真实视频地址，并尝试接口内置解析。</p></div>
-      <div class="feat"><div class="ic">📺</div><h3>点播 + 直播</h3><p>兼容标准 TVBox 接口，苹果CMS 采集源、多直播源、m3u/txt 列表全支持。</p></div>
-      <div class="feat"><div class="ic">🎨</div><h3>明暗双主题</h3><p>跟随系统自动切换，白天夜晚都舒适。</p></div>
+    <div class="sec-head rv">
+      <span class="sec-tag">FEATURES</span>
+      <h2>把复杂留给 AI，<br>把纯粹留给观影</h2>
+      <p>每一项能力都为"打开就看"服务</p>
+    </div>
+    <div class="bento">
+      <div class="bcard b-lg rv">
+        <div class="b-ic"><svg class="ic" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="10" y="10" width="4" height="4"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg></div>
+        <h3>100% AI 打造</h3>
+        <p>从架构设计到每一行代码，完全由 AI（KIMI-K3）编写完成 —— 一次 AI 工程能力的完整实践。</p>
+        <div class="code-deco">
+          <span class="c1">// 整个项目，没有一行人类手写代码</span><br>
+          <span class="c2">class</span> <span class="c3">JuyingTV</span> <span class="c1">{</span><br>
+          &nbsp;&nbsp;<span class="c2">val</span> author = <span class="c4">"KIMI-K3"</span><br>
+          &nbsp;&nbsp;<span class="c2">val</span> humanLines = <span class="c4">0</span><br>
+          <span class="c1">}</span>
+        </div>
+      </div>
+      <div class="bcard rv rv-d1">
+        <div class="b-ic"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="5.6" y1="5.6" x2="18.4" y2="18.4"/></svg></div>
+        <h3>零打扰</h3>
+        <p>无广告、无弹窗、无账号体系、无埋点统计。打开就看，看完就走。</p>
+      </div>
+      <div class="bcard rv rv-d2">
+        <div class="b-ic"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg></div>
+        <h3>网页嗅探</h3>
+        <p>非直连播放页自动在后台 WebView 中嗅探真实视频地址，失败自动尝试接口内置解析 API。</p>
+      </div>
+      <div class="bcard b-lg rv" id="sizeCard">
+        <div class="b-ic"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></div>
+        <h3>极致小巧</h3>
+        <p>R8 全量压缩 + 资源裁剪，体积缩小 84%，秒下载秒安装。</p>
+        <div class="sizeviz">
+          <div class="sizebar"><span class="lbl">压缩前</span><div class="track"><div class="fill old" data-w="100%"></div></div><b>15 MB</b></div>
+          <div class="sizebar"><span class="lbl">压缩后</span><div class="track"><div class="fill new" data-w="17%"></div></div><b>2.5 MB</b></div>
+        </div>
+      </div>
+      <div class="bcard rv rv-d1">
+        <div class="b-ic"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M9 21h6"/></svg></div>
+        <h3>点播 + 直播</h3>
+        <p>兼容标准 TVBox 接口，苹果CMS 采集源、多直播源、m3u / txt 列表全支持。</p>
+      </div>
+      <div class="bcard rv rv-d2">
+        <div class="b-ic"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none"/></svg></div>
+        <h3>明暗双主题</h3>
+        <p>跟随系统自动切换。点下方卡片试试：</p>
+        <div class="theme-demo" id="themeDemo">
+          <div class="td-bar"></div>
+          <div class="td-bar short"></div>
+          <span class="td-tag">点击切换 明 / 暗</span>
+        </div>
+      </div>
+      <div class="bcard rv rv-d1">
+        <div class="b-ic"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 4v2.5M12 17.5V20M4 12h2.5M17.5 12H20"/></svg></div>
+        <h3>手势操控</h3>
+        <p>亮度、音量、进度、倍速，全屏一切操作皆可手势完成。</p>
+      </div>
+      <div class="bcard rv rv-d2">
+        <div class="b-ic"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div>
+        <h3>历史与收藏</h3>
+        <p>观看进度自动记忆，一键续播；喜爱影片随手收藏。</p>
+      </div>
     </div>
   </div>
 </section>
 
-<section style="background:var(--card)">
+<section class="shot-sec" id="shots">
   <div class="wrap">
-    <h2>应用截图</h2>
-    <p class="sub">深色主题实拍</p>
-    <div class="shots">
-      <img src="screenshots/01-home.jpg" alt="首页">
-      <img src="screenshots/02-detail.jpg" alt="详情·小窗播放">
-      <img class="wide" src="screenshots/03-player.jpg" alt="全屏播放">
-      <img class="wide" src="screenshots/04-live.jpg" alt="直播">
-      <img src="screenshots/05-search.jpg" alt="搜索">
-      <img src="screenshots/06-mine.jpg" alt="我的">
+    <div class="sec-head rv">
+      <span class="sec-tag">SCREENSHOTS</span>
+      <h2>所见即所得</h2>
+      <p>深色主题真机实拍，左右滑动浏览</p>
+    </div>
+    <div class="carousel rv">
+      <button class="car-btn car-prev" id="carPrev" aria-label="上一张">‹</button>
+      <div class="car-track" id="carTrack">
+        <div class="shot"><img src="screenshots/01-home.jpg" alt="首页"><div class="cap">首页 · 推荐与分类</div></div>
+        <div class="shot"><img src="screenshots/02-detail.jpg" alt="详情"><div class="cap">详情 · 进页即播</div></div>
+        <div class="shot wide"><img src="screenshots/03-player.jpg" alt="全屏播放"><div class="cap">全屏播放 · 手势控制</div></div>
+        <div class="shot wide"><img src="screenshots/04-live.jpg" alt="直播"><div class="cap">直播 · 多源切换</div></div>
+        <div class="shot"><img src="screenshots/05-search.jpg" alt="搜索"><div class="cap">搜索 · 实时防抖</div></div>
+        <div class="shot"><img src="screenshots/06-mine.jpg" alt="我的"><div class="cap">我的 · 历史与收藏</div></div>
+      </div>
+      <button class="car-btn car-next" id="carNext" aria-label="下一张">›</button>
+      <div class="car-dots" id="carDots"></div>
     </div>
   </div>
 </section>
 
-<section>
+<section id="guide">
   <div class="wrap">
-    <h2>三步开始观影</h2>
-    <p class="sub">App 不含任何内容，配置一个 TVBox 接口即可</p>
+    <div class="sec-head rv">
+      <span class="sec-tag">GET STARTED</span>
+      <h2>三步开始观影</h2>
+      <p>App 不含任何内容，配置一个 TVBox 接口即可</p>
+    </div>
     <div class="steps">
-      <div class="step"><h3>下载安装</h3><p>从 GitHub Releases 下载 APK（约 2.5MB），安装到 Android 7.0+ 手机。</p></div>
-      <div class="step"><h3>配置数据源</h3><p>「我的 → 设置与数据源」：从内置推荐接口一键选用，或粘贴你自己的 TVBox 接口地址。</p></div>
-      <div class="step"><h3>开始观看</h3><p>返回首页即自动加载内容。点播进页即播，小窗全屏无缝切换；直播多源自动切换。</p></div>
+      <div class="step rv"><span class="n">1</span>
+        <h3>下载安装</h3>
+        <p>从 <a href="https://github.com/csuhan/tvbox/releases/latest" target="_blank" rel="noopener">GitHub Releases</a> 下载 APK（约 2.5MB），安装到 Android 7.0+ 手机。</p>
+      </div>
+      <div class="step rv rv-d1"><span class="n">2</span>
+        <h3>配置数据源</h3>
+        <p>打开 <code>我的 → 设置与数据源</code>：从内置推荐接口一键选用，或粘贴你自己的 TVBox 接口地址。</p>
+      </div>
+      <div class="step rv rv-d2"><span class="n">3</span>
+        <h3>开始观看</h3>
+        <p>返回首页自动加载内容。点播进页即播，直播多源自动切换，观看进度自动记忆。</p>
+      </div>
     </div>
   </div>
 </section>
 
-<section style="background:var(--card)">
+<section style="padding-top:0">
   <div class="wrap">
-    <h2>播放器手势</h2>
-    <p class="sub">全屏播放时</p>
-    <table>
-      <tr><th>手势</th><th>功能</th></tr>
-      <tr><td>单击屏幕</td><td>显示 / 隐藏控制栏</td></tr>
-      <tr><td>双击左 / 右半屏</td><td>快退 / 快进 10 秒</td></tr>
-      <tr><td>水平拖动</td><td>拖动进度</td></tr>
-      <tr><td>左半屏上下滑</td><td>调节亮度</td></tr>
-      <tr><td>右半屏上下滑</td><td>调节音量</td></tr>
-    </table>
+    <div class="sec-head rv">
+      <span class="sec-tag">GESTURES</span>
+      <h2>全屏手势</h2>
+      <p>一切操作，触手可及</p>
+    </div>
+    <div class="gestures">
+      <div class="gest rv"><div class="gi"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 4v2.5M12 17.5V20M4 12h2.5M17.5 12H20"/></svg></div><div><b>单击屏幕</b><span>显示 / 隐藏控制栏</span></div></div>
+      <div class="gest rv rv-d1"><div class="gi"><svg class="ic" viewBox="0 0 24 24"><path d="M6 6l6 6-6 6M13 6l6 6-6 6"/></svg></div><div><b>双击左 / 右半屏</b><span>快退 / 快进 10 秒</span></div></div>
+      <div class="gest rv rv-d2"><div class="gi"><svg class="ic" viewBox="0 0 24 24"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg></div><div><b>水平拖动</b><span>拖动播放进度</span></div></div>
+      <div class="gest rv"><div class="gi"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></div><div><b>左半屏上下滑</b><span>调节屏幕亮度</span></div></div>
+      <div class="gest rv rv-d1"><div class="gi"><svg class="ic" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 9a4.2 4.2 0 0 1 0 6"/></svg></div><div><b>右半屏上下滑</b><span>调节媒体音量</span></div></div>
+      <div class="gest rv rv-d2"><div class="gi"><svg class="ic" viewBox="0 0 24 24"><path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15" cy="8" r="2"/><circle cx="9" cy="16" r="2"/></svg></div><div><b>控制栏</b><span>选集 · 倍速 · 画面比例</span></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="shot-sec" id="faq" style="padding-top:110px">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="sec-tag">FAQ</span>
+      <h2>常见问题</h2>
+    </div>
+    <div class="faq">
+      <details class="rv"><summary>首页空白 / 提示没有可用接口？<span class="arr">▼</span></summary>
+        <div class="fa-body">接口地址失效或网络不通。进入「我的 → 设置与数据源」，换一个内置推荐接口，或添加新的 TVBox 接口地址。</div>
+      </details>
+      <details class="rv rv-d1"><summary>某些站点显示"暂不支持"？<span class="arr">▼</span></summary>
+        <div class="fa-body">该站点是 type 3 爬虫源（需要 Spider JAR/JS 运行环境），手机版暂不支持。请在站点列表中切换其他站点使用。</div>
+      </details>
+      <details class="rv rv-d2"><summary>播放失败怎么办？<span class="arr">▼</span></summary>
+        <div class="fa-body">依次尝试：切换剧集线路 → 切换站点 → 更换接口。部分地址有防盗链，App 已自动携带 UA/Referer 并支持嗅探解析，大多数情况可直接播放。</div>
+      </details>
+      <details class="rv rv-d3"><summary>App 会收集我的数据吗？<span class="arr">▼</span></summary>
+        <div class="fa-body">不会。App 仅请求网络权限，无账号体系、无埋点统计，所有历史与收藏均存储在本机。</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="cta-banner rv">
+      <h2>现在开始，<span class="grad-text">纯粹观影</span></h2>
+      <p>2.5MB · 无广告 · 免登录 · Android 7.0+</p>
+      <a class="btn btn-p" href="https://github.com/csuhan/tvbox/releases/latest" target="_blank" rel="noopener"><svg class="ic" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>免费下载</a>
+    </div>
   </div>
 </section>
 
@@ -189,9 +547,116 @@
     <div class="disclaimer">
       <strong>免责声明</strong>：本项目为纯技术学习项目，由 AI 生成代码，仅供学习交流使用。本应用不包含、不存储、不分发任何影视内容，所有内容均来自用户自行配置的第三方公开接口，与本项目无关。请于下载后 24 小时内删除本软件，使用产生的任何法律后果由使用者自行承担。
     </div>
-    <p>聚影 TVBox 手机版 · 100% AI（KIMI-K3）编写 · <a href="https://github.com/csuhan/tvbox">GitHub</a></p>
+    <div class="foot-grid" style="justify-content:center;gap:34px">
+      <a href="https://github.com/csuhan/tvbox" target="_blank" rel="noopener">GitHub 仓库</a>
+      <a href="https://github.com/csuhan/tvbox/releases/latest" target="_blank" rel="noopener">下载 APK</a>
+      <a href="https://github.com/csuhan/tvbox/issues" target="_blank" rel="noopener">问题反馈</a>
+    </div>
+    <p class="foot-bottom">聚影 TVBox 手机版 · 100% AI（KIMI-K3）编写</p>
   </div>
 </footer>
 
+<script>
+// ---------- 导航滚动态 ----------
+const nav = document.getElementById('nav');
+const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 24);
+window.addEventListener('scroll', onScroll, {passive:true}); onScroll();
+
+// ---------- 滚动显现 ----------
+const io = new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+}), {threshold:.12});
+document.querySelectorAll('.rv').forEach(el => io.observe(el));
+
+// ---------- Hero 手机视差倾斜 ----------
+const phone = document.getElementById('phoneTilt');
+const hero = document.querySelector('.hero');
+if (matchMedia('(pointer:fine)').matches) {
+  hero.addEventListener('mousemove', e => {
+    const r = hero.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width - .5;
+    const y = (e.clientY - r.top) / r.height - .5;
+    phone.style.transform = `rotateY(${x*10}deg) rotateX(${-y*8}deg)`;
+  });
+  hero.addEventListener('mouseleave', () => phone.style.transform = '');
+}
+
+// ---------- Bento 鼠标聚光 ----------
+document.querySelectorAll('.bcard').forEach(c => {
+  c.addEventListener('mousemove', e => {
+    const r = c.getBoundingClientRect();
+    c.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+    c.style.setProperty('--my', (e.clientY - r.top) + 'px');
+  });
+});
+
+// ---------- 体积对比条动画 ----------
+const sizeIO = new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) {
+    e.target.querySelectorAll('.fill').forEach(f => f.style.width = f.dataset.w);
+    sizeIO.unobserve(e.target);
+  }
+}), {threshold:.4});
+const sizeCard = document.getElementById('sizeCard');
+if (sizeCard) sizeIO.observe(sizeCard);
+
+// ---------- 主题切换小演示 ----------
+const td = document.getElementById('themeDemo');
+let tdDark = true;
+function paintDemo() {
+  td.style.background = tdDark ? '#15181D' : '#F4F5F7';
+  td.style.color = tdDark ? '#ECEDEF' : '#18191C';
+  td.querySelectorAll('.td-bar').forEach(b =>
+    b.style.background = tdDark ? '#2A2E36' : '#E0E2E6');
+}
+if (td) { paintDemo(); td.addEventListener('click', () => { tdDark = !tdDark; paintDemo(); }); }
+
+// ---------- 截图轮播 ----------
+const track = document.getElementById('carTrack');
+const dotsBox = document.getElementById('carDots');
+const shots = [...track.children];
+shots.forEach((_, i) => {
+  const d = document.createElement('i');
+  d.addEventListener('click', () => scrollToShot(i));
+  dotsBox.appendChild(d);
+});
+const dots = [...dotsBox.children];
+// 每张图宽度不同：用真实内容偏移量定位
+function offsets() {
+  const pad = parseFloat(getComputedStyle(track).paddingLeft) || 0;
+  const t = track.getBoundingClientRect();
+  return shots.map(s => s.getBoundingClientRect().left - t.left + track.scrollLeft - pad);
+}
+function scrollToShot(i) {
+  i = Math.max(0, Math.min(shots.length - 1, i));
+  track.scrollTo({left: offsets()[i], behavior:'smooth'});
+}
+function curIdx() {
+  const os = offsets(), x = track.scrollLeft;
+  let best = 0;
+  os.forEach((o, j) => { if (Math.abs(o - x) < Math.abs(os[best] - x)) best = j; });
+  return best;
+}
+const prevBtn = document.getElementById('carPrev');
+const nextBtn = document.getElementById('carNext');
+prevBtn.addEventListener('click', () => scrollToShot(curIdx() - 1));
+nextBtn.addEventListener('click', () => scrollToShot(curIdx() + 1));
+function syncCar() {
+  const i = curIdx();
+  dots.forEach((d, j) => d.classList.toggle('on', j === i));
+  const maxL = track.scrollWidth - track.clientWidth - 4;
+  prevBtn.style.opacity = track.scrollLeft <= 4 ? '.3' : '';
+  nextBtn.style.opacity = track.scrollLeft >= maxL ? '.3' : '';
+}
+track.addEventListener('scroll', syncCar, {passive:true});
+window.addEventListener('resize', syncCar);
+dots[0].classList.add('on');
+syncCar();
+// 键盘左右键
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft') scrollToShot(Math.max(0, curIdx()-1));
+  if (e.key === 'ArrowRight') scrollToShot(Math.min(shots.length-1, curIdx()+1));
+});
+</script>
 </body>
 </html>
