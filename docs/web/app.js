@@ -808,6 +808,11 @@ async function bootAggregate() {
         const keep = quick.sites.find(x => x.key === store.siteKey) || quick.sites[0];
         selectSite(keep);
         G.configLoading = false;
+        // 增量写缓存：即使没等完全量扫描，下次也能秒开
+        store.configCache = {
+          sites: quick.sites, lives: quick.lives,
+          siteSourceName: quick.siteSourceName, aggInfo: G.aggInfo, ts: Date.now(),
+        };
       }
       return r;
     });
