@@ -291,8 +291,27 @@ function jsonToDetail(o) {
   });
 }
 
+/** 部分代理（如 jina）会把 JSON 字符串里的转义换行还原成字面控制符，导致非法 JSON。
+ *  状态机：仅转义字符串内部的控制字符，结构空白不受影响 */
+function sanitizeJson(text) {
+  let out = '', inStr = false, esc = false;
+  for (const ch of text) {
+    if (esc) { out += ch; esc = false; continue; }
+    if (ch === '\\') { out += ch; esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; out += ch; continue; }
+    if (inStr && ch < ' ') {
+      out += '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0');
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
 function parseJson(text) {
-  const root = JSON.parse(text);
+  let root;
+  try { root = JSON.parse(text); }
+  catch { root = JSON.parse(sanitizeJson(text)); }
   const classes = (root.class || []).map(c => ({ id: String(c.type_id), name: String(c.type_name) }));
   const list = (root.list || []).filter(o => o.vod_id != null);
   return {
