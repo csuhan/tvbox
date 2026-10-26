@@ -299,9 +299,18 @@ const HomeView = {
       }
       if (!this.silent) { this.loading = true; this.error = ''; this.items = []; this.classes = []; this.cat = ''; this.page = 1; }
       try {
+        const hasPics = p => p && p.items && p.items.some(i => i.vodPic);
         const [home, latest] = await Promise.allSettled([G.api.home(), G.api.latest(1)]);
-        const lp = latest.status === 'fulfilled' ? latest.value : null;
+        let lp = latest.status === 'fulfilled' ? latest.value : null;
         const hp = home.status === 'fulfilled' ? home.value : null;
+        // ac=videolist 失败或无图：重试一次（代理偶发失败/限流）。
+        // 注意 ac=list 的列表本就不带封面，不能直接拿来兜底
+        if (!lp || !hasPics(lp)) {
+          try {
+            const r2 = await G.api.latest(1);
+            if (hasPics(r2) || !lp) lp = r2;
+          } catch {}
+        }
         const classes = (hp && hp.classes.length ? hp.classes : (lp ? lp.classes : [])) || [];
         let cls = classes;
         if (!cls.length && lp) {
@@ -314,7 +323,10 @@ const HomeView = {
         if (items && items.length) {
           this.classes = cls; this.items = items; this.page = page; this.pageCount = pageCount;
           this.error = '';
-          try { localStorage.setItem(cacheKey, JSON.stringify({ classes: cls, items, page, pageCount })); } catch {}
+          // 只缓存带封面的好数据，避免无图结果覆盖好缓存
+          if (hasPics({ items })) {
+            try { localStorage.setItem(cacheKey, JSON.stringify({ classes: cls, items, page, pageCount })); } catch {}
+          }
         } else if (!this.items.length) {
           this.error = '该站点没有返回内容，换个站点试试';
         }
