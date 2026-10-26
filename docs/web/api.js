@@ -159,7 +159,8 @@ function absUrl(base, rel) {
   try { return new URL(rel, base).href; } catch { return rel; }
 }
 
-export async function loadConfig(url) {
+/** 拉取并解析单个接口配置 */
+export async function fetchConfig(url) {
   const raw = await fetchText(url);
   const json = decodeConfig(raw);
   const cfg = JSON.parse(json);
@@ -176,8 +177,70 @@ export async function loadConfig(url) {
     url: absUrl(url, l.url),
     epg: l.epg || '',
   }));
+  return { sites, lives };
+}
+
+export async function loadConfig(url) {
+  const { sites, lives } = await fetchConfig(url);
   if (!sites.length) throw new Error('配置中没有可用站点（type 0/1）');
   return { sites, lives };
+}
+
+/** Java String.hashCode 等价实现（与 App 端命名空间规则一致） */
+export function javaHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h * 31 + str.charCodeAt(i)) | 0);
+  }
+  return h;
+}
+
+/** 健康检查单个接口（与 App 端 checkSource 对应） */
+export async function checkSource(url, name) {
+  try {
+    const { sites, lives } = await fetchConfig(url);
+    if (!sites.length) {
+      const msg = '配置中没有站点或全部为爬虫源';
+      return { url, name, ok: false, siteCount: 0, message: msg, sites: [], lives: [] };
+    }
+    return { url, name, ok: true, siteCount: sites.length, message: '正常', sites, lives };
+  } catch (e) {
+    return { url, name, ok: false, siteCount: 0, message: e.message || '连接失败', sites: [], lives: [] };
+  }
+}
+
+/**
+ * 聚合多个健康配置（与 App 端 mergeConfigs 对应）：
+ * 站点 key 加来源命名空间，直播按 url 去重
+ */
+export function aggregateConfigs(results) {
+  const healthy = results.filter(r => r.ok);
+  const siteSourceName = {};
+  const sites = healthy.flatMap(r => r.sites.map(s => {
+    const ns = javaHash(r.url) + '::' + s.key;
+    siteSourceName[ns] = r.name;
+    return Object.assign({}, s, { key: ns, sourceName: r.name });
+  }));
+  const seen = new Set();
+  const lives = healthy.flatMap(r => r.lives).filter(l => {
+    if (seen.has(l.url)) return false;
+    seen.add(l.url);
+    return true;
+  });
+  return { sites, lives, siteSourceName };
+}
+
+/** 并发池（限制同时进行的任务数） */
+export async function pool(items, limit, fn) {
+  const ret = new Array(items.length);
+  let idx = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (idx < items.length) {
+      const i = idx++;
+      ret[i] = await fn(items[i], i);
+    }
+  }));
+  return ret;
 }
 
 // ---------------- 苹果CMS API ----------------

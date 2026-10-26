@@ -2,7 +2,7 @@
  * 聚影 Web — 纯客户端视频站（Vue 3 + hls.js）
  */
 import {
-  store, RECOMMENDED, fetchText, loadConfig, MacCms, parseLive,
+  store, RECOMMENDED, fetchText, checkSource, aggregateConfigs, pool, MacCms, parseLive,
   saveHistory, toggleFav, isFav, looksLikeMedia, proxyUrlFor, mustProxy, fetchMedia,
 } from './api.js';
 
@@ -18,7 +18,10 @@ const G = reactive({
   site: null,          // 当前站点 {key,name,type,api}
   api: null,           // MacCms 实例
   sources: [],         // 接口列表
-  currentSource: '',   // 当前接口 url
+  currentSource: '',   // 当前接口 url（兼容保留）
+  health: {},          // 各接口健康状态 {url:{checking,ok,siteCount,message}}
+  scanning: false,
+  aggInfo: '',         // 如 "聚合 5 个接口 · 62 站点"
   settingsOpen: false,
   toast: '',
   _toastTimer: 0,
@@ -683,9 +686,10 @@ const SettingsModal = {
       G.sources = G.sources.filter(s => s.url !== url);
       store.sources = G.sources;
     },
-    async useSource(url) {
-      G.settingsOpen = false;
-      await bootConfig(url);
+    async rescan() {
+      store.goodProxy = '';
+      await bootAggregate();
+      if (!G.configError) { G.settingsOpen = false; toast(G.aggInfo); }
     },
     saveProxy() {
       store.proxy = this.proxyInput.trim();
@@ -701,17 +705,23 @@ const SettingsModal = {
         <h4>当前站点</h4>
         <div class="hint">来自当前接口的可用站点（type 0/1）</div>
         <select class="site-sel" v-model="curSiteKey">
-          <option v-for="s in sites" :key="s.key" :value="s.key">{{ s.name }}</option>
+          <option v-for="s in sites" :key="s.key" :value="s.key">{{ s.name }}{{ s.sourceName ? ' · ' + s.sourceName : '' }}</option>
         </select>
       </div>
       <div class="set-card">
         <h4>数据源接口</h4>
-        <div class="hint">TVBox 标准接口（JSON）。切换后站点与内容自动刷新。</div>
-        <div class="src-row" v-for="s in G.sources" :key="s.url" :class="{cur: s.url===G.currentSource}">
+        <div class="hint">TVBox 标准接口（JSON）。所有接口自动扫描聚合并合并站点，无需手动切换。</div>
+        <div class="src-row" v-for="s in G.sources" :key="s.url" :class="{cur: G.health[s.url] && G.health[s.url].ok}">
           <span class="nm">{{ s.name }}</span>
           <span class="ur">{{ s.url }}</span>
-          <button class="use" v-if="s.url!==G.currentSource" @click="useSource(s.url)">使用</button>
-          <button class="del" v-if="s.url!==G.currentSource" @click="removeSource(s.url)">删除</button>
+          <span class="hb" :class="{ok: G.health[s.url] && G.health[s.url].ok, bad: G.health[s.url] && !G.health[s.url].ok && !G.health[s.url].checking}">
+            {{ G.health[s.url] ? (G.health[s.url].checking ? '检测中…' : (G.health[s.url].ok ? G.health[s.url].siteCount + ' 站点' : G.health[s.url].message)) : '未检测' }}
+          </span>
+          <button class="del" @click="removeSource(s.url)">删除</button>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+          <span style="font-size:12px;color:var(--text3)">{{ G.aggInfo }}</span>
+          <button class="btn btn-g" style="padding:7px 16px;font-size:12.5px" @click="rescan" :disabled="G.scanning">{{ G.scanning ? '扫描中…' : '重新扫描' }}</button>
         </div>
         <div class="add-row">
           <input v-model="newName" placeholder="名称（可选）" style="max-width:120px">
@@ -735,20 +745,42 @@ const SettingsModal = {
 };
 
 // ---------------- 启动 ----------------
-async function bootConfig(url) {
+/** 扫描所有已保存接口并聚合健康源（与 App 端 scanAndAggregate 一致） */
+async function bootAggregate() {
+  if (G.scanning) return;
+  G.scanning = true;
   G.configLoading = true; G.configError = '';
-  G.currentSource = url; store.currentSource = url;
+  // 健康状态占位
+  const health = {};
+  G.sources.forEach(s => health[s.url] = { checking: true, ok: false, siteCount: 0, message: '检测中…' });
+  G.health = health;
   try {
-    const cfg = await loadConfig(url);
-    G.sites = cfg.sites;
-    G.lives = cfg.lives;
-    const keep = cfg.sites.find(s => s.key === store.siteKey) || cfg.sites[0];
+    // 并发池=3：避免首个请求未探出可用代理时多路竞速导致请求爆炸
+    const results = await pool(G.sources, 3, async (s) => {
+      const r = await checkSource(s.url, s.name);
+      G.health = Object.assign({}, G.health, {
+        [s.url]: { checking: false, ok: r.ok, siteCount: r.siteCount, message: r.message },
+      });
+      return r;
+    });
+    const healthy = results.filter(r => r.ok);
+    if (!healthy.length) {
+      G.configError = '没有可用的接口，请检查网络或在设置中更换接口';
+      toast(G.configError);
+      G.settingsOpen = true;
+      return;
+    }
+    const merged = aggregateConfigs(results);
+    G.sites = merged.sites;
+    G.lives = merged.lives;
+    G.siteSourceName = merged.siteSourceName;
+    G.aggInfo = '聚合 ' + healthy.length + ' 个接口 · ' + merged.sites.length + ' 站点';
+    const keep = merged.sites.find(s => s.key === store.siteKey) || merged.sites[0];
     selectSite(keep);
-  } catch (e) {
-    G.configError = '接口加载失败：' + (e.message || '网络错误') + '。请在设置中更换接口。';
-    toast(G.configError);
-    G.settingsOpen = true;
-  } finally { G.configLoading = false; }
+  } finally {
+    G.scanning = false;
+    G.configLoading = false;
+  }
 }
 
 function selectSite(site) {
@@ -775,7 +807,7 @@ const App = {
     G.sources = store.sources.length ? store.sources : [...RECOMMENDED];
     if (!store.sources.length) store.sources = G.sources;
     G.route = parseHash();
-    bootConfig(store.currentSource || G.sources[0].url);
+    bootAggregate();
   },
   template: `
   <div>
