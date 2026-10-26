@@ -116,7 +116,12 @@ async function fetchSmart(url, { responseType = 'text', timeoutMs = 30000, direc
   const racers = [];
   if (direct && !mustProxy(url)) racers.push(-1);
   if (store.goodProxy !== '' && cap(store.goodProxy)) {
+    // 已知好代理优先，同时带两个备胎防止限流/抽风时整链失败
     racers.push(store.goodProxy);
+    let backup = 0;
+    for (let i = 0; i < PROXIES.length && backup < 2; i++) {
+      if (i !== store.goodProxy && cap(i)) { racers.push(i); backup++; }
+    }
   } else {
     for (let i = 0; i < PROXIES.length; i++) if (cap(i)) racers.push(i);
     if (store.proxy) racers.push(-2);
