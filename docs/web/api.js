@@ -23,6 +23,8 @@ export const store = {
   get proxy() { return LS.get('jy_proxy', ''); },       // 用户自定义代理前缀
   get goodProxy() { return LS.get('jy_good_proxy', ''); }, // 自动探测到的可用代理索引
   set goodProxy(v) { LS.set('jy_good_proxy', v); },
+  get configCache() { return LS.get('jy_config_cache', null); }, // 上次聚合结果缓存（秒开）
+  set configCache(v) { LS.set('jy_config_cache', v); },
 };
 
 /** 内置推荐接口（与 App 端一致） */
@@ -393,6 +395,25 @@ export function toggleFav(rec) {
 }
 export function isFav(siteKey, vodId) {
   return store.favs.some(f => f.siteKey === siteKey && f.vodId === vodId);
+}
+
+/**
+ * 海报图地址处理：
+ * - https 页面下 http 图片必被混合内容拦截（手机端无此限制，这是 Web「暂无封面」的主因）
+ * - 部分图床有防盗链。统一走 weserv 免费图片代理（支持任意 http/https、自带缓存）
+ */
+export function picUrl(u) {
+  if (!u) return '';
+  if (location.protocol === 'https:' && u.startsWith('http:')) {
+    return 'https://images.weserv.nl/?url=' + encodeURIComponent(u.replace(/^https?:\/\//, ''));
+  }
+  return u;
+}
+
+/** 直连失败后的兜底代理地址 */
+export function picFallback(u) {
+  if (!u || u.includes('images.weserv.nl')) return '';
+  return 'https://images.weserv.nl/?url=' + encodeURIComponent(u.replace(/^https?:\/\//, ''));
 }
 
 /** 是否直连可播放媒体 */

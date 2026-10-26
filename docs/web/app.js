@@ -4,6 +4,7 @@
 import {
   store, RECOMMENDED, fetchText, checkSource, aggregateConfigs, pool, MacCms, parseLive,
   saveHistory, toggleFav, isFav, looksLikeMedia, proxyUrlFor, mustProxy, fetchMedia,
+  picUrl, picFallback,
 } from './api.js';
 
 const { createApp, reactive, computed, watch, onMounted, onUnmounted, ref, nextTick } = Vue;
@@ -60,7 +61,7 @@ const I = {
   vol: '<svg class="ic" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 9a4.2 4.2 0 0 1 0 6"/></svg>',
   heart: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-9.3-9C1.3 7.6 3.3 4.5 6.5 4.5c2 0 3.6 1.1 4.5 2.7.9-1.6 2.5-2.7 4.5-2.7 3.2 0 5.2 3.1 3.8 6.5-1.8 4.4-9.3 9-9.3 9z"/></svg>',
   heartFill: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-9.3-9C1.3 7.6 3.3 4.5 6.5 4.5c2 0 3.6 1.1 4.5 2.7.9-1.6 2.5-2.7 4.5-2.7 3.2 0 5.2 3.1 3.8 6.5-1.8 4.4-9.3 9-9.3 9z" fill="currentColor" stroke="none"/></svg>',
-  gear: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v2.5M12 19.5V22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M2 12h2.5M19.5 12H22M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>',
+  gear: '<svg class="ic" viewBox="0 0 24 24"><path d="M10.3 3.2h3.4l.5 2.4c.6.2 1.1.6 1.6 1l2.3-.9 1.7 2.9-1.9 1.6c.1.4.1.8.1 1.2s0 .8-.1 1.2l1.9 1.6-1.7 2.9-2.3-.9c-.5.4-1 .8-1.6 1l-.5 2.4h-3.4l-.5-2.4c-.6-.2-1.1-.6-1.6-1l-2.3.9-1.7-2.9 1.9-1.6c-.1-.4-.1-.8-.1-1.2s0-.8.1-1.2L4.2 8.6l1.7-2.9 2.3.9c.5-.4 1-.8 1.6-1l.5-2.4z"/><circle cx="12" cy="11.5" r="2.6"/></svg>',
   phone: '<svg class="ic" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg>',
   back: '<svg class="ic" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
   film: '<svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16M16 4v16"/></svg>',
@@ -73,12 +74,25 @@ const I = {
 // ---------------- 海报卡 ----------------
 const VCard = {
   props: ['item', 'progress'],
+  methods: {
+    pic(u) { return picUrl(u); },
+    onPicErr(e) {
+      const img = e.target;
+      // 直连失败：走 weserv 图片代理重试一次
+      if (!img.dataset.fb) {
+        const fb = picFallback(img.dataset.orig || '');
+        img.dataset.fb = '1';
+        if (fb) { img.src = fb; return; }
+      }
+      img.remove();
+    },
+  },
   template: `
   <a class="vcard" :href="'#/detail/' + encodeURIComponent(item.vodId)">
     <div class="poster">
       <div class="ph" v-if="!item.vodPic">暂无海报</div>
-      <img v-if="item.vodPic" :src="item.vodPic" loading="lazy" referrerpolicy="no-referrer"
-           @load="e=>e.target.classList.add('ld')" @error="e=>e.target.remove()">
+      <img v-if="item.vodPic" :src="pic(item.vodPic)" :data-orig="item.vodPic" loading="lazy" referrerpolicy="no-referrer"
+           @load="e=>e.target.classList.add('ld')" @error="onPicErr">
       <span class="badge" v-if="item.vodRemarks">{{ item.vodRemarks }}</span>
       <div class="hist-prog" v-if="progress>0"><i :style="{width:progress+'%'}"></i></div>
     </div>
@@ -266,31 +280,51 @@ const HomeView = {
   components: { VCard },
   data: () => ({
     classes: [], items: [], cat: '', page: 1, pageCount: 1,
-    loading: true, loadingMore: false, error: '',
+    loading: true, loadingMore: false, error: '', silent: false,
   }),
   methods: {
     async boot() {
-      this.loading = true; this.error = '';
-      this.items = []; this.classes = []; this.cat = ''; this.page = 1;
+      // 首页内容缓存：秒开渲染，后台静默刷新
+      const cacheKey = 'jy_home_' + (G.site ? G.site.key : '');
+      if (!this.silent) {
+        const cache = (() => { try { return JSON.parse(localStorage.getItem(cacheKey) || 'null'); } catch { return null; } })();
+        if (cache && cache.items && cache.items.length) {
+          this.classes = cache.classes || [];
+          this.items = cache.items;
+          this.page = cache.page || 1;
+          this.pageCount = cache.pageCount || 1;
+          this.loading = false;
+          this.silent = true; // 本次为静默刷新
+        }
+      }
+      if (!this.silent) { this.loading = true; this.error = ''; this.items = []; this.classes = []; this.cat = ''; this.page = 1; }
       try {
         const [home, latest] = await Promise.allSettled([G.api.home(), G.api.latest(1)]);
         const lp = latest.status === 'fulfilled' ? latest.value : null;
         const hp = home.status === 'fulfilled' ? home.value : null;
-        this.classes = (hp && hp.classes.length ? hp.classes : (lp ? lp.classes : [])) || [];
-        if (!this.classes.length && lp) {
+        const classes = (hp && hp.classes.length ? hp.classes : (lp ? lp.classes : [])) || [];
+        let cls = classes;
+        if (!cls.length && lp) {
           const names = [...new Set(lp.items.map(i => i.typeName).filter(Boolean))];
-          this.classes = names.map((n, i) => ({ id: String(i + 1), name: n }));
+          cls = names.map((n, i) => ({ id: String(i + 1), name: n }));
         }
-        if (lp) { this.items = lp.items; this.page = lp.page; this.pageCount = lp.pageCount; }
-        else if (hp) { this.items = hp.items; this.page = hp.page; this.pageCount = hp.pageCount; }
-        if (!this.items.length) this.error = '该站点没有返回内容，换个站点试试';
+        let items = null, page = 1, pageCount = 1;
+        if (lp) { items = lp.items; page = lp.page; pageCount = lp.pageCount; }
+        else if (hp) { items = hp.items; page = hp.page; pageCount = hp.pageCount; }
+        if (items && items.length) {
+          this.classes = cls; this.items = items; this.page = page; this.pageCount = pageCount;
+          this.error = '';
+          try { localStorage.setItem(cacheKey, JSON.stringify({ classes: cls, items, page, pageCount })); } catch {}
+        } else if (!this.items.length) {
+          this.error = '该站点没有返回内容，换个站点试试';
+        }
       } catch (e) {
-        this.error = '加载失败：' + (e.message || '网络错误');
-      } finally { this.loading = false; }
+        if (!this.items.length) this.error = '加载失败：' + (e.message || '网络错误');
+      } finally { this.loading = false; this.silent = false; }
     },
     async selectCat(id) {
       if (this.cat === id) return;
-      this.cat = id; this.page = 1; this.loading = true; this.error = '';
+      this.cat = id; this.page = 1; this.loading = true; this.error = ''; this.silent = false;
       try {
         const p = id ? await G.api.category(id, 1) : await G.api.latest(1);
         this.items = p.items; this.page = p.page; this.pageCount = p.pageCount;
@@ -749,11 +783,13 @@ const SettingsModal = {
 async function bootAggregate() {
   if (G.scanning) return;
   G.scanning = true;
-  G.configLoading = true; G.configError = '';
+  if (!G.sites.length) G.configLoading = true;
+  G.configError = '';
   // 健康状态占位
   const health = {};
   G.sources.forEach(s => health[s.url] = { checking: true, ok: false, siteCount: 0, message: '检测中…' });
   G.health = health;
+  let shown = G.sites.length > 0; // 已有内容（缓存）则无需抢先展示
   try {
     // 并发池=3：避免首个请求未探出可用代理时多路竞速导致请求爆炸
     const results = await pool(G.sources, 3, async (s) => {
@@ -761,6 +797,18 @@ async function bootAggregate() {
       G.health = Object.assign({}, G.health, {
         [s.url]: { checking: false, ok: r.ok, siteCount: r.siteCount, message: r.message },
       });
+      // 首个健康源：立即出内容，不等其余接口
+      if (r.ok && !shown) {
+        shown = true;
+        const quick = aggregateConfigs([r]);
+        G.sites = quick.sites;
+        G.lives = quick.lives;
+        G.siteSourceName = quick.siteSourceName;
+        G.aggInfo = '聚合 1 个接口 · ' + quick.sites.length + ' 站点（扫描中…）';
+        const keep = quick.sites.find(x => x.key === store.siteKey) || quick.sites[0];
+        selectSite(keep);
+        G.configLoading = false;
+      }
       return r;
     });
     const healthy = results.filter(r => r.ok);
@@ -775,8 +823,15 @@ async function bootAggregate() {
     G.lives = merged.lives;
     G.siteSourceName = merged.siteSourceName;
     G.aggInfo = '聚合 ' + healthy.length + ' 个接口 · ' + merged.sites.length + ' 站点';
-    const keep = merged.sites.find(s => s.key === store.siteKey) || merged.sites[0];
+    // 全量合并后尽量保留当前站点
+    const curKey = G.site ? G.site.key : store.siteKey;
+    const keep = merged.sites.find(s => s.key === curKey) || merged.sites[0];
     selectSite(keep);
+    // 写入缓存，下次秒开
+    store.configCache = {
+      sites: merged.sites, lives: merged.lives,
+      siteSourceName: merged.siteSourceName, aggInfo: G.aggInfo, ts: Date.now(),
+    };
   } finally {
     G.scanning = false;
     G.configLoading = false;
@@ -807,6 +862,17 @@ const App = {
     G.sources = store.sources.length ? store.sources : [...RECOMMENDED];
     if (!store.sources.length) store.sources = G.sources;
     G.route = parseHash();
+    // 缓存秒开：先展示上次聚合结果，后台静默重扫
+    const cache = store.configCache;
+    if (cache && cache.sites && cache.sites.length) {
+      G.sites = cache.sites;
+      G.lives = cache.lives || [];
+      G.siteSourceName = cache.siteSourceName || {};
+      G.aggInfo = cache.aggInfo || '';
+      const keep = G.sites.find(s => s.key === store.siteKey) || G.sites[0];
+      selectSite(keep);
+      G.configLoading = false;
+    }
     bootAggregate();
   },
   template: `
